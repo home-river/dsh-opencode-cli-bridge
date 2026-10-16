@@ -534,18 +534,26 @@ opencode-cli.exe serve
 
 ### 3A.9 仍需排查的 CLI → 插件问题
 
-- [ ] `tool_use` 多步事件的完整结构；
-- [ ] 是否存在 reasoning、retry、error 等其他 stdout 事件；
-- [ ] 非 JSON stderr 在失败路径如何出现；
+> **2026-10-15 第二轮实测已回答 7 项**，结论见 [docs/CLI-BEHAVIOR.md](./docs/CLI-BEHAVIOR.md) §12。
+
+**已回答：**
+
+- [x] `tool_use` 多步事件的完整结构 → `part.type="tool"`，含 `tool` / `callID` / `state.{status,input,output}`。⚠️ 注意 `part.type` 与事件 `type` 命名不一致
+- [x] 是否存在 reasoning、retry、error 等其他 stdout 事件 → **未见 `reasoning` / `retry` / `error`**；只有 `step_start` / `text` / `tool_use` / `step_finish`
+- [x] 非 JSON stderr 在失败路径如何出现 → **带 ANSI 颜色码的人类可读文本**（如 `Error: Session not found`），必须剥色；**错误走 stderr 而非 stdout JSON**
+- [x] `--session` 指向不存在 session 时的行为 → **exit 1 + stderr 报错，不会自动创建**
+- [x] Windows 下取消 `opencode.cmd` 是否会留下子进程 → **会留孤儿 `opencode.exe`**；直接 spawn 真身 exe 则干净
+- [x] 一个 DSH 请求中多个 `step_finish` 时 usage 是覆盖还是累加 → **每个 step 报增量，必须累加**（验算 `total = input+output+reasoning+cache.read` 成立）
+- [x] CLI 启动阶段和首事件阶段的超时默认值 → `startup 30s / firstEvent 45s / idle 300s / total 600s / shutdown 3s`（⚠️ `idle` 不能用 120s：实测单次生成静默 46.5s）
+
+**仍未回答：**
+
 - [ ] 中途 kill 后 session 是否已经持久化；
-- [ ] `--session` 指向不存在 session 时的行为；
 - [ ] `--session` 与 `--model` 换模型时是否允许；
 - [ ] `--session` 与 `--dir` 不一致时的行为；
-- [ ] CLI 启动阶段和首事件阶段的超时默认值；
-- [ ] Windows 下取消 `opencode.cmd` 是否会留下子进程；
-- [ ] 一个 DSH 请求中多个 `step_finish` 时 usage 是覆盖还是累加；
 - [ ] 没有 `text`、只有 `tool_use` 时如何结束；
-- [ ] JSON 行超长、进程提前关闭、stdout 半行的处理。
+- [ ] JSON 行超长、进程提前关闭、stdout 半行的处理；
+- [ ] 空正文且 `reason="stop"` 时的真实形态。
 
 ### 3A.10 对下一阶段的直接影响
 

@@ -81,6 +81,17 @@ DSH Chat → DSH LLM Service → dsh-opencode-bridge 插件 → OpenCode CLI →
 | C9 | **参数一律走 argv 数组**，绝不拼接命令行字符串 | §4 |
 | C10 | 进程归零验证**按 PID 基线**，不能全机 grep `opencode` | §2 |
 
+**2026-10-15 第二轮实测追加：**
+
+| # | 约束 | 依据 |
+|---|---|---|
+| C11 | **错误检测必须读 `stderr`**，只解析 stdout 事件流会漏掉全部失败 | CLI-BEHAVIOR §12.3 |
+| C12 | **stderr 解析前必须剥 ANSI 转义码** | CLI-BEHAVIOR §12.3 |
+| C13 | **`ErrorCode` 判定顺序**：`exit≠0 && stdout 无事件` → 失败，再按 stderr 文本细分 | CLI-BEHAVIOR §12.3 |
+| C14 | **`idle` 超时按"最长单次生成"留量**，不是按"流式停顿"（实测静默 46.5s） | CLI-BEHAVIOR §12.2 |
+| C15 | **解析以事件 `type` 为准**，`part.type` 命名与之不一致 | CLI-BEHAVIOR §12.1 |
+| C16 | **usage 必须跨 `step_finish` 累加**（每 step 报增量） | CLI-BEHAVIOR §12.1 |
+
 ---
 
 ## 4. 架构
@@ -173,7 +184,7 @@ export interface CliBridgeOptions {
 export interface CliTimeouts {
   startupMs: number;    // 默认 30_000
   firstEventMs: number; // 默认 45_000
-  idleMs: number;       // 默认 120_000，自【上一个事件】起算
+  idleMs: number;       // 默认 300_000，自【上一个事件】起算（见 §8.1）
   totalMs: number;      // 默认 600_000
   shutdownMs: number;   // 默认 3_000，kill 前宽限期
 }
@@ -261,36 +272,87 @@ export type CliBridgeEvent =
 
 ### 6.2 OpenCode 事件 → CliBridgeEvent 映射
 
-| OpenCode `type` | 产出 | 说明 |
-|---|---|---|
-| `step_start` | `start`（每 messageId 一次） | 取 `sessionID` / `part.messageID` |
-| `text` | `text` | 取 `part.text`，按 `part.messageID` 分组 |
-| `tool_use` | `tool` | **不产出正文**，`raw` 保留原文供诊断 |
-| `tool_result` | `tool` | 同上 |
-| `reasoning` / thinking | 无 | 忽略 + `unknown-event` 诊断 |
-| `step_finish` | `finish` | 映射见 §7.2；usage 见 §6.3 |
-| 其他 / 未知 | 无 | `unknown-event` 诊断 + **忽略** |
+| OpenCode `type` | `part.type` | 产出 | 说明 |
+|---|---|---|---|
+| `step_start` | `step-start` | `start`（每 messageId 一次） | 取 `sessionID` / `part.messageID` |
+| `text` | `text` | `text` | 取 `part.text`，按 `part.messageID` 分组 |
+| `tool_use` | **`tool`** | `tool` | **不产出正文**，`raw` 保留原文供诊断 |
+| `tool_result` | `tool` | `tool` | 同上 |
+| `reasoning` / thinking | — | 无 | 忽略 + `unknown-event` 诊断 |
+| `step_finish` | `step-finish` | `finish` | 映射见 §7.2；usage 见 §6.3 |
+| 其他 / 未知 | — | 无 | `unknown-event` 诊断 + **忽略** |
+
+⚠️ **事件 `type` 与 `part.type` 命名不一致**（实测，[CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §12.1）：
+`tool_use` 事件的 `part.type` 是 `"tool"`，不是 `"tool_use"`。**解析以事件 `type` 为准。**
+
+`tool_use` 的 `part` 实测结构（保留进 `raw`）：
+
+```text
+part.tool      工具名（如 "bash"）
+part.callID    调用 ID
+part.state.status   "completed" | ...
+part.state.input    工具入参对象
+part.state.output   工具输出文本
+```
 
 ### 6.3 未知点的保守默认策略
 
-以下是 [memory.md](../../memory.md) 3A.9 尚未实测的点。**在实测前一律按"保守默认"执行；实测结论回写后修订本表。**
+**2026-10-15 第二轮实测已回答前 5 项**（[CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §12），其余按"保守默认"执行，实现期集成测试 R07/R08 继续答。
 
-| 未知点 | 保守默认（MVP 实现） | 可切换 | 实测后定 |
+| 未知点 | 默认（MVP 实现） | 状态 | 依据 |
 |---|---|---|---|
-| 多个 `step_finish` 的 usage | **累加**（`usageMode: "sum"`） | ✅ `usageMode: "last"` | 累加 or 覆盖 |
-| `text` 是否可能多段 | 支持多段，按 `messageID` 分组 | — | 分组维度 |
-| 同一 `messageID` 多条 `text` | **按序拼接，不重复发** | — | — |
-| `reasoning` | 忽略 + 诊断 | — | 要不要暴露 |
-| 未知事件类型 | **诊断 + 忽略，绝不抛错** | — | 是否真的出现 |
-| `step_finish` 的未知 `reason` | 映射为 `error`，原始值进诊断 | — | 完整取值表 |
-| 只有 `tool_use` 没有 `text` | `finish` with `TOOL_ONLY_RESPONSE` | — | 真实结束形态 |
-| 没有任何 `text` 且 `reason=stop` | `finish` with `EMPTY_RESPONSE` | — | — |
-| `--session` 指向失效 session | 捕获 → `SESSION_INVALID`，**不重试** | — | 真实行为 |
-| JSON 半行 / 截断 | `protocol-line` 诊断 + 跳过该行 | — | — |
-| stdout 混入非 JSON | 同上，**不污染正文** | — | — |
-| 单行超长（> 1 MiB） | 截断 + `protocol-line` 诊断 | ✅ `maxLineBytes` | — |
+| 多个 `step_finish` 的 usage | **累加**（`usageMode: "sum"`） | ✅ **已实测**：每 step 报增量，验算 `total = input+output+reasoning+cache.read` 成立 | §12.1 |
+| `text` 是否 delta 流 | **整段一次性**，支持多段按 `messageID` 分组 | ✅ **已实测**：1 条 `text`，len=1248 | §12.2 |
+| 同一 `messageID` 多条 `text` | **按序拼接，不重复发** | ⚪ 保守默认（实测未复现多条） | — |
+| `reasoning` | 忽略 + 诊断 | ✅ **已实测**：全程未出现 | §12.1 |
+| `--session` 失效行为 | 捕获 → `SESSION_INVALID`，**不重试** | ✅ **已实测**：exit 1 + stderr `Session not found`，非静默新建 | §12.3 |
+| `step_finish` 的 `reason` 取值 | 未知值映射为 `error` + `UNKNOWN` | 🟡 **部分实测**：已见 `"tool-calls"` / `"stop"`；全集仍未知 | §12.1 |
+| 未知事件类型 | **诊断 + 忽略，绝不抛错** | ⚪ 保守默认（实测未复现） | — |
+| 只有 `tool_use` 没有 `text` | `finish(reason="tool-calls", code="TOOL_ONLY_RESPONSE")` | ⚪ 保守默认 | — |
+| 没有任何 `text` 且 `reason=stop` | `finish(reason="error", code="EMPTY_RESPONSE")` | ⚪ 保守默认 | — |
+| JSON 半行 / 截断 | `protocol-line` 诊断 + 跳过该行 | ⚪ 保守默认（fake CLI T06 覆盖） | — |
+| stdout 混入非 JSON | 同上，**不污染正文** | ⚪ 保守默认（fake CLI T07 覆盖） | — |
+| 单行超长（> 1 MiB） | 截断 + `protocol-line` 诊断 | ✅ 可切换 `maxLineBytes` | — |
 
 **总原则：未知不 crash；宁可漏报正文，绝不误报正文。**
+
+### 6.4 错误通道（2026-10-15 实测新增）
+
+🔴 **失败不是通过 stdout JSON 事件表达的，而是 `stderr` + 非零退出码。** 实测（[CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §12.3）：
+
+```text
+EXIT code=1
+stdout bytes=0
+stderr = "\u001b[91m\u001b[1mError: \u001b[0mSession not found\r\n"
+```
+
+**因此 `run-cli.ts` 必须同时维护两条判定线：**
+
+```text
+stdout 线：JSON Lines → 事件 → CliBridgeEvent        （成功路径）
+stderr 线：文本      → 剥 ANSI → 错误分类             （失败路径）
+```
+
+**判定顺序（自上而下，先命中者胜）：**
+
+```text
+1. signal 已中止                        → CANCELLED
+2. 超时层命中                            → TIMEOUT
+3. exit ≠ 0 且 stdout 无任何事件
+     ├─ stderr 匹配 /session not found/i  → SESSION_INVALID
+     ├─ stderr 匹配 /permission|denied/i  → PROMPT_FAILED
+     ├─ spawn 阶段失败                    → CLI_START_FAILED
+     └─ 其他                              → PROTOCOL_ERROR
+4. exit ≠ 0 且 stdout 有事件但无 finish   → PROTOCOL_ERROR
+5. 有 finish                             → 按 §7.2 映射
+```
+
+**约束：**
+
+- **stderr 必须全程收集**（进 `diagnostics`），不能只在失败时才读 —— 那时管道可能已关闭
+- **stderr 解析前必须剥 ANSI 转义码**（`\u001b[91m` 等）
+- **stderr 文本匹配只用于细分 `ErrorCode`，不得作为唯一判据**；主判据是 `exit code` + `stdout` 有无事件
+- **stderr 内容不得直接作为用户可见正文**（I8：可能含路径 / 环境信息）
 
 ---
 
@@ -371,12 +433,18 @@ export type ErrorCode =
 |---|---|---|---|
 | `startup` | 30s | spawn 调用 | `TIMEOUT` |
 | `firstEvent` | 45s | spawn 成功 | `TIMEOUT` |
-| `idle` | 120s | **上一个事件** | `TIMEOUT` |
+| `idle` | **300s** | **上一个事件** | `TIMEOUT` |
 | `total` | 600s | spawn 调用 | `TIMEOUT` |
 | `shutdown` | 3s | 发出 kill | 强制 `taskkill /T /F` |
 
-依据 [CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §6：实测一轮真实问答 **21.4 秒**，故 `firstEvent` 取 45s 而非 30s。
-**`idle` 必须自"上一个事件"起算**，否则长回答会被误杀。
+依据 [CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §6 / §12：
+
+- 一轮真实问答实测 21.4s（短）～ **60.5s**（800 字长回答），故 `firstEvent` 取 45s、`total` 取 600s
+- 🔴 **`idle` 必须按"最长单次生成"留量，不是按"流式停顿"**
+  `--format json` 是**整段吐**，`step_start` 到 `text` 之间的静默期 = 整个模型生成时间。
+  实测 800 字 → 静默 **46.5s**（`part.time.end - part.time.start`）；3000 字可能 > 170s。
+  原定 `idle 120s` **会误杀正常回答**，故提到 **300s**
+- **`idle` 必须自"上一个事件"起算**，否则长回答会被误杀
 
 ### 8.2 `settle()` 单出口（防竞争）
 
@@ -514,6 +582,11 @@ FAKE_MODE=session-echo    回显收到的 --session（测续接透传）
 | T25 | 取消 + 超时几乎同时触发 | 只 settle 一次；无 unhandled rejection |
 | T26 | 同一 `signal` 挂 3 个请求 | 无 listener 泄漏；无 `MaxListeners` 警告 |
 | T27 | `finish` 之后仍有 stdout | 忽略；不产出事件（I2） |
+| T28 | stderr 带 ANSI 报错 + exit 1 + 无 stdout | `error(SESSION_INVALID)`；`diagnostics` 含**剥色后**的 stderr |
+| T29 | 成功路径也有 stderr 噪声 | stderr 全程进 `diagnostics`；**不影响正文**；仍正常 finish |
+| T30 | exit 1 + stdout 有部分事件但无 `finish` | `error(PROTOCOL_ERROR)`；已产出正文保留 |
+| T31 | 两个 `step_finish`（fake 双 step） | usage **跨 step 累加**正确（C16） |
+| T32 | 长静默后才出 `text`（fake 模拟 50s 静默） | 默认 `idle=300s` **不误杀**；调短 `idle` 后正确超时 |
 
 ### 10.4 纯函数单测
 
@@ -534,7 +607,7 @@ FAKE_MODE=session-echo    回显收到的 --session（测续接透传）
 |---|---|---|
 | R01 | 正常一轮 | 事件序列 / 耗时基线 |
 | R02 | 传 `--session` 续接 | 续接是否跨进程成立 |
-| R03 | `--session` 指向不存在的 ID | 行为 → 定 `SESSION_INVALID` 判定 |
+| R03 | `--session` 指向不存在的 ID | ✅ **已实测**（CLI-BEHAVIOR §12.3）：exit 1 + stderr `Session not found`。回归验证 §6.4 判定链 |
 | R04 | 同一 session 换 model | 是否允许 |
 | R05 | `--dir` 相对路径 | 是否要求绝对路径 |
 | R06 | `--dir` 不存在 | 行为 → 定 `WORKSPACE_INVALID` 判定 |

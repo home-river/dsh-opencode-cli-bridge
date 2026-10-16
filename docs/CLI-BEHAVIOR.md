@@ -413,3 +413,171 @@ spawn(SHIM, args, { shell: true, stdio: ["ignore", "inherit", "inherit"] });
 ```
 
 ⚠️ 复现时注意：**清理只按 PID**，不要用 `taskkill /IM`；机器上若有 OpenCode Desktop 常驻进程，需先记入基线。
+
+---
+
+## 12. 补充实测：事件流语义与错误通道
+
+> 2026-10-15 第二轮。目的：回答设计 spec §6.3 中 5 个**会改设计**的未决项。
+> 探针一次性，已删除；同时验证了 `stdio:'pipe'` 可用性。
+
+### 12.0 预检：`stdio:'pipe'` 可用
+
+```text
+=== 预检 stdio:'pipe' ===
+  PIPE 可用  exit=0  version=1.19.0
+```
+
+`stdio: ["ignore","pipe","pipe"]` 可用，`run-cli.ts` 无需退化到文件描述符。
+
+### 12.1 P1 · 工具调用与多 step（21.5s）
+
+prompt：`请先列出当前目录下的文件，然后用一句话总结。`（临时工作区含 3 个文件）
+
+```text
+类型序列 = step_start -> tool_use -> step_finish -> step_start -> text -> step_finish
+事件数=6  非 JSON 行=0  sessionID=ses_ebd378c66ffeQVu0WjTl61met2
+```
+
+#### 观察
+
+| 观察 | 结论 |
+|---|---|
+| 2 个 `step_start`、2 个 `messageID` | 多 step 确实存在，`start` 事件会有多条 |
+| **`text` 只出现在第 2 个 step** | 不能假设 `text` 在首个 step，也不能假设事件顺序固定 |
+| 2 个 `step_finish`，`reason` = `"tool-calls"`、`"stop"` | 映射表已覆盖 |
+| **全程无 `reasoning` 事件** | "忽略 reasoning"的保守默认正确 |
+
+#### usage：按 step 报增量，必须累加
+
+```text
+step1: total=9553 input=9510 output=19 reasoning=24 cache{read:0,   write:0}
+step2: total=9755 input=214  output=24 reasoning=45 cache{read:9472, write:0}
+
+验算：9510 + 19 + 24 + 0    = 9553 ✓
+      214  + 24 + 45 + 9472 = 9755 ✓   （total = input + output + reasoning + cache.read）
+```
+
+**结论：每个 `step_finish` 报的是该 step 的增量，整轮总用量必须累加。**
+→ `usageMode: "sum"` 是正确默认；`total` 字段也可累加。
+
+#### `tool_use` 完整结构
+
+```json
+{
+  "type": "tool_use",
+  "timestamp": 1792121805814,
+  "sessionID": "ses_...",
+  "part": {
+    "type": "tool",
+    "tool": "bash",
+    "callID": "call_201b653d92264cb78b11663b",
+    "state": {
+      "status": "completed",
+      "input": { "command": "ls" },
+      "output": "..."
+    }
+  }
+}
+```
+
+⚠️ **`part.type` 是 `"tool"`，不是 `"tool_use"`。** 事件的 `type` 与 `part.type` 命名不一致：
+
+| 事件 `type` | 对应 `part.type` |
+|---|---|
+| `step_start` | `step-start` |
+| `text` | `text` |
+| `tool_use` | `tool` |
+| `step_finish` | `step-finish` |
+
+**解析时以事件 `type` 为准，不要按 `part.type` 找 `tool_use`。**
+
+### 12.2 P2 · 长回答（60.5s）—— 一条整段，且推翻 idle 默认值
+
+prompt：`请写一篇约 800 字的短文，主题是软件测试的重要性。`
+
+```text
+类型序列 = step_start -> text -> step_finish
+事件数=3  非 JSON 行=0
+text [0] len=1248  messageID=msg_142c8cd7c0018ctldCxic7CUml
+       time={"start":1792121827161,"end":1792121873691}
+step_finish [0] reason="stop"
+       tokens={"total":10334,"input":46,"output":742,"reasoning":74,"cache":{"write":0,"read":9472}}
+```
+
+| 观察 | 结论 |
+|---|---|
+| **只有 1 条 `text`，len=1248** | ✅ **整段一次性，不是 delta 流** —— `map-events` 的设计不用重做 |
+| `time.end - time.start` = **46.5 秒** | ⚠️ `text` 事件在**整段生成完之后**才到达 |
+| 总耗时 **60.5s** | ⚠️ 远超第一轮的 21.4s |
+
+#### 🔴 由此推翻 `idle = 120s`
+
+`--format json` 是**整段吐**，因此 `step_start` 到 `text` 之间的静默期 **= 整个模型生成时间**：
+
+```text
+800 字  → 静默约 46.5s
+3000 字 → 静默可能 > 170s        ← idle 120s 会误杀正常回答
+```
+
+**`idle` 必须提到 300s。** `firstEvent 45s` 不变（`step_start` 到达得快）。
+
+**修正后的超时默认值：**
+
+```text
+startup    30s     （spawn → 首个事件）
+firstEvent 45s     （spawn 成功 → 首个事件）
+idle       300s    （自上一个事件；实测静默可达 46.5s+，按最长单次生成留量）
+total      600s    （实测 60.5s，长回答需更大余量）
+shutdown   3s      （kill 前宽限期）
+```
+
+### 12.3 P3 · 无效 `--session`（3.0s）—— `SESSION_INVALID` 成立
+
+参数：`--session ses_probe_does_not_exist_00000`
+
+```text
+EXIT code=1 sig=null elapsed=3004ms
+stdout bytes=0
+stderr = "\u001b[91m\u001b[1mError: \u001b[0mSession not found\r\n"
+事件数=0
+```
+
+| 观察 | 影响 |
+|---|---|
+| exit 1 + stderr 明确报错 | ✅ **`SESSION_INVALID` 成立**，不是静默新建 session |
+| ⚠️ **错误走 `stderr`，不是 stdout JSON** | **错误检测必须读 stderr**，只解析 stdout 事件流会漏掉全部失败 |
+| ⚠️ **stderr 带 ANSI 颜色码** `\u001b[91m\u001b[1m` | 解析前必须剥色 |
+| ⚠️ **错误是人类可读文本，非结构化** | 判定策略：`exit≠0 && stdout 无任何事件` → 调用失败；再按 stderr 文本细分 `ErrorCode` |
+| 顺带回答了一个旧疑问 | `--session` 传**不存在**的 ID **不会自动创建**，直接报错 |
+
+### 12.4 新增实现约束
+
+| # | 约束 | 依据 |
+|---|---|---|
+| C11 | **错误检测必须读 `stderr`**，不能只解析 stdout 事件流 | §12.3 |
+| C12 | **stderr 解析前必须剥 ANSI 转义码** | §12.3 |
+| C13 | **`ErrorCode` 判定顺序**：`exit≠0 && stdout 无事件` → 失败，再按 stderr 文本细分 | §12.3 |
+| C14 | **`idle` 超时按"最长单次生成"留量，不是按"流式停顿"** | §12.2 |
+| C15 | **解析以事件 `type` 为准**，`part.type` 命名与之不一致 | §12.1 |
+| C16 | **usage 必须跨 `step_finish` 累加** | §12.1 |
+
+### 12.5 由此更新的超时默认值（最终）
+
+```text
+startup    30_000
+firstEvent 45_000
+idle       300_000     ← 第二轮修订（原 120s 会误杀）
+total      600_000
+shutdown   3_000
+```
+
+### 12.6 仍未验证（更新后）
+
+- [ ] `--session` 与 `--dir` 不一致时的行为
+- [ ] 同一 session 更换 model 是否允许
+- [ ] 中途 kill 后 session 是否已经持久化
+- [ ] 非 JSON stderr 在**其他**失败路径的形态（本次只测了 session 失效）
+- [ ] JSON 半行 / 超长单行（真实 CLI 未复现，fake CLI 已覆盖）
+- [ ] 是否存在 `retry` / `error` 等其他 stdout 事件类型
+- [ ] 空正文且 `reason="stop"` 时的真实形态
