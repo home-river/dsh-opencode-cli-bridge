@@ -48,6 +48,8 @@ function killTree(pid: number, onDone: () => void): void {
     finish();
     return;
   }
+  // 注意：taskkill 卡死时此 fallback 会在进程可能仍在运行的情况下就 resolve（afterKill），
+  // 属已知取舍——总比永久挂起好；调用方以 outcome 而非进程状态为准。
   const t = setTimeout(finish, 5000);
   t.unref?.();
 }
@@ -85,11 +87,17 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
   const stderrChunks: string[] = [];
   const timers = new Set<NodeJS.Timeout>();
   let idleTimer: NodeJS.Timeout | null = null;
+  let firstEventTimer: NodeJS.Timeout | null = null;
+  let exitFlushTimer: NodeJS.Timeout | null = null;
   let aborted = false;
   let timedOut = false;
   let timedOutLayer: TimeoutLayer | null = null;
   let lastExit: { code: number | null; sig: string | null } | null = null;
   let settled = false;
+  // C1：spawn 后立刻捕获 pid（grace timer 触发时 child.pid 可能已为 undefined）
+  const spawnedPid = child.pid ?? null;
+  // C1：child.on("exit") 同步记录 lastExit 后，等待管道 20ms 收尾再触发的回调队列
+  const exitWaiters: Array<() => void> = [];
 
   let resolveOutcome!: (o: RunCliOutcome) => void;
   const completion = new Promise<RunCliOutcome>((r) => {
@@ -103,6 +111,16 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
       clearTimeout(idleTimer);
       idleTimer = null;
     }
+    // I2：首个事件到达时语义上 firstEvent 已满足；即使没到达，emit 时也必须清掉
+    if (firstEventTimer) {
+      clearTimeout(firstEventTimer);
+      firstEventTimer = null;
+    }
+    // C1：20ms 尾部收尾 timer 必须被跟踪并清除，不得悬挂
+    if (exitFlushTimer) {
+      clearTimeout(exitFlushTimer);
+      exitFlushTimer = null;
+    }
   };
 
   const resetIdle = (): void => {
@@ -114,6 +132,14 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
     }, timeouts.idleMs);
   };
 
+  // I2：首个事件到达时清除 firstEvent 定时器（spec §8.1：spawn 成功 → 首个事件）
+  const markFirstEvent = (): void => {
+    if (firstEventTimer) {
+      clearTimeout(firstEventTimer);
+      firstEventTimer = null;
+    }
+  };
+
   const addTimer = (ms: number, layer: TimeoutLayer): void => {
     const h = setTimeout(() => {
       timedOut = true;
@@ -121,6 +147,7 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
       finish();
     }, ms);
     timers.add(h);
+    if (layer === "firstEvent") firstEventTimer = h;
   };
 
   function onAbort(): void {
@@ -156,13 +183,25 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
       return;
     }
 
-    // 进程还没退：先温和 kill，等 shutdown timeout，再 taskkill /T /F
-    let done = false;
+    // C1：确保 emit 只发生在 lastExit 已知、或明确"已 kill 无退出码"之后
+    let emitted = false;
     const afterKill = (): void => {
-      if (done) return;
-      done = true;
+      if (emitted) return;
+      emitted = true;
       emit();
     };
+
+    // C1：真实退出码要等 child 的 exit 事件（含 20ms 管道收尾）；把 afterKill 挂进
+    // exitWaiters，而不是另起一个 once("exit")——避免与外层 exit 回调竞态、以 null 退出码收场。
+    // spawn error（exit 永远不来）时由 child "error" 事件兜底收场。
+    exitWaiters.push(afterKill);
+
+    // 无 pid 说明 spawn 失败：exit 不会到来，立即留下诊断并收场
+    if (spawnedPid === null) {
+      stderrChunks.push("run-cli: no child pid captured at spawn; killTree skipped — process tree may leak\n");
+      afterKill();
+      return;
+    }
 
     try {
       child.kill();
@@ -171,25 +210,27 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
     }
 
     const grace = setTimeout(() => {
-      if (lastExit === null && child.pid) {
-        killTree(child.pid, afterKill);
+      if (lastExit === null) {
+        // I1：killTree 必须执行；pid 缺失在上面已作为 spawn 失败诊断处理
+        killTree(spawnedPid, afterKill);
       } else {
         afterKill();
       }
     }, timeouts.shutdownMs);
     timers.add(grace);
-
-    child.once("exit", () => {
-      clearTimeout(grace);
-      afterKill();
-    });
   }
 
   // ---- stdio 收集 ----
   child.stdout?.setEncoding("utf8");
   let stdoutBuf = "";
   child.stdout?.on("data", (chunk: string) => {
-    opts.onEvent();
+    markFirstEvent();
+    // I3：消费方回调不得让异常窜进流机制
+    try {
+      opts.onEvent();
+    } catch {
+      /* 消费方回调抛错：忽略，不中断流处理 */
+    }
     resetIdle();
     stdoutBuf += chunk;
     let nl = stdoutBuf.indexOf("\n");
@@ -197,18 +238,33 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
       let line = stdoutBuf.slice(0, nl);
       stdoutBuf = stdoutBuf.slice(nl + 1);
       if (line.endsWith("\r")) line = line.slice(0, -1);
-      if (line.length > 0) opts.onStdoutLine(line);
+      if (line.length > 0) {
+        try {
+          opts.onStdoutLine(line);
+        } catch (e) {
+          stderrChunks.push(`run-cli: onStdoutLine callback threw: ${String(e)}\n`);
+        }
+      }
       nl = stdoutBuf.indexOf("\n");
     }
   });
 
   child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (chunk: string) => {
-    opts.onEvent();
+    markFirstEvent();
+    try {
+      opts.onEvent();
+    } catch {
+      /* 消费方回调抛错：忽略，不中断流处理 */
+    }
     resetIdle();
     // G7: stderr 全程收集（失败判定靠它），同时把原文交给调用方
     stderrChunks.push(chunk);
-    opts.onStderrChunk(chunk);
+    try {
+      opts.onStderrChunk(chunk);
+    } catch {
+      /* I3：消费方回调抛错：忽略，stderr 原文已收集 */
+    }
   });
 
   // ---- 终止路径 ----
@@ -218,9 +274,18 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
   });
 
   child.on("exit", (code, sig) => {
-    // 给管道 20ms 收尾，避免丢失尾部输出
-    setTimeout(() => {
-      lastExit = { code, sig };
+    // C1：lastExit 同步记录——不能等 20ms，否则 finish() 的 kill 路径会以 null 退出码 emit
+    lastExit = { code, sig };
+    if (settled) return; // finish() 的 kill 路径自行收场，无需再排 20ms 收尾 timer
+    // 给管道 20ms 收尾，避免丢失尾部输出；timer 必须被跟踪，emit 时统一清除
+    exitFlushTimer = setTimeout(() => {
+      exitFlushTimer = null;
+      const waiters = exitWaiters.splice(0);
+      if (waiters.length > 0) {
+        // finish() 的 kill 路径已把 afterKill 挂进来：等退出码已知后再收场
+        for (const w of waiters) w();
+        return;
+      }
       finish();
     }, 20);
   });

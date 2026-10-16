@@ -201,3 +201,49 @@ test("同一个 signal 挂 3 个请求：全部 aborted，无 listener 泄漏、
   assert.equal(results.length, 3);
   assert.equal(results.every((r) => r.aborted), true);
 });
+
+test("firstEvent 不误杀：总时长超过 firstEventMs 但首事件已到达 → 正常完成", async () => {
+  const { opts, stdoutLines } = makeOpts("long-silence", {
+    // FAKE_MODE=long-silence 立刻写 step_start（首事件 <100ms），随后静默 2500ms > firstEventMs
+    timeouts: { startupMs: 5000, firstEventMs: 1000, idleMs: 30000, totalMs: 60000, shutdownMs: 1000 },
+    env: { ...process.env, FAKE_MODE: "long-silence", FAKE_SILENCE_MS: "2500" },
+  });
+  const out = await runCliProcess(opts);
+  assert.equal(out.timedOut, false);
+  assert.equal(out.exitCode, 0);
+  assert.ok(stdoutLines.some((l) => l.includes("AFTER_LONG_SILENCE")));
+});
+
+test("startup 超时：spawn 成功但无任何事件时触发 timedOutLayer=startup", async () => {
+  const { opts } = makeOpts("hang", {
+    timeouts: { startupMs: 50, firstEventMs: 1000, idleMs: 30000, totalMs: 30000, shutdownMs: 1000 },
+  });
+  const out = await runCliProcess(opts);
+  assert.equal(out.timedOut, true);
+  assert.equal(out.timedOutLayer, "startup");
+});
+
+test("firstEvent 超时：spawn 成功但首事件迟迟不到 → timedOutLayer=firstEvent", async () => {
+  // 不写任何 stdio 的进程（不调用 fake fixture，直接跑一个 sleep 子进程）
+  // → 首事件永远不到 → firstEventMs 到点触发 firstEvent 层。
+  // 必须 startupMs > firstEventMs，否则 startup 层先截胡。
+  const { opts } = makeOpts("normal", {
+    args: ["-e", "setTimeout(() => {}, 600000)"], // node -e 挂起 10 分钟，不写任何 stdio
+    timeouts: { startupMs: 5000, firstEventMs: 500, idleMs: 30000, totalMs: 60000, shutdownMs: 1000 },
+  });
+  const out = await runCliProcess(opts);
+  assert.equal(out.timedOut, true);
+  assert.equal(out.timedOutLayer, "firstEvent");
+});
+
+test("消费方 onStdoutLine 抛错：runCliProcess 仍正常 resolve，不崩不挂", async () => {
+  const { opts } = makeOpts("normal", {
+    onStdoutLine: () => {
+      throw new Error("consumer boom");
+    },
+  });
+  const out = await runCliProcess(opts);
+  assert.equal(out.exitCode, 0);
+  assert.equal(out.aborted, false);
+  assert.equal(out.timedOut, false);
+});
