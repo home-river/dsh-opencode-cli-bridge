@@ -639,7 +639,7 @@ FAKE_MODE=session-echo    回显收到的 --session（测续接透传）
 | 测试文件语言 | **`.mjs` 直接 import 编译产物 `lib/`** —— 避开 NodeNext 下 TS 测试的扩展名冲突 |
 | `npm test` | `tsc -p tsconfig.json && node --test`（顺带保证 `lib/` 本身可跑） |
 | `npm run test:integration` | `tsc && node --test test/integration/` |
-| 新增依赖 | **零**（不引入任何 runtime / dev 依赖） |
+| 新增依赖 | **零 runtime 依赖**。dev 依赖仅允许 `typescript` + `@types/node`（构建与类型专用，**不进 `lib/` 产物**）。实测确认当前 `node_modules` 为空、`tsc` 不可用，这两个是 `npm run build` / `npm run typecheck` 能跑起来的前提 |
 | 产物 | `lib/index.js` + `lib/index.d.ts` |
 
 ---
@@ -671,7 +671,7 @@ FAKE_MODE=session-echo    回显收到的 --session（测续接透传）
 | A9 | 模块不写任何持久化文件 | 代码审查 + 测试期间文件系统快照 |
 | A10 | 模块不记录 prompt 正文 | 代码审查 + `diagnostics` 内容断言 |
 | A11 | `strict` 无错误 | `npm run typecheck` |
-| A12 | 零新增依赖 | `package.json` diff |
+| A12 | 零 **runtime** 依赖 | `package.json` diff：`dependencies` 必须为空；`devDependencies` 只允许 `typescript` + `@types/node` |
 
 ---
 
