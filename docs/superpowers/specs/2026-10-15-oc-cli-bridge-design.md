@@ -279,6 +279,7 @@ export type CliBridgeEvent =
 | `tool_use` | **`tool`** | `tool` | **不产出正文**，`raw` 保留原文供诊断 |
 | `tool_result` | `tool` | `tool` | 同上 |
 | `reasoning` / thinking | — | 无 | 忽略 + `unknown-event` 诊断 |
+| `error` | — | **待映射** `error` + `UPSTREAM_ERROR` | **2026-10-16 实测新增**：上游推理失败走 stdout `type:"error"`（payload 含 `error.name` / `error.data.{message,statusCode,isRetryable,responseHeaders,responseBody,metadata}`）。当前实现按"未知事件"处理（诊断+忽略），错误码由 §6.4 兜底为 `PROTOCOL_ERROR` —— **改进项：显式映射** |
 | `step_finish` | `step-finish` | `finish` | 映射见 §7.2；usage 见 §6.3 |
 | 其他 / 未知 | — | 无 | `unknown-event` 诊断 + **忽略** |
 
@@ -306,10 +307,10 @@ part.state.output   工具输出文本
 | 同一 `messageID` 多条 `text` | **按序拼接，不重复发** | ⚪ 保守默认（实测未复现多条） | — |
 | `reasoning` | 忽略 + 诊断 | ✅ **已实测**：全程未出现 | §12.1 |
 | `--session` 失效行为 | 捕获 → `SESSION_INVALID`，**不重试** | ✅ **已实测**：exit 1 + stderr `Session not found`，非静默新建 | §12.3 |
-| `step_finish` 的 `reason` 取值 | 未知值映射为 `error` + `UNKNOWN` | 🟡 **部分实测**：已见 `"tool-calls"` / `"stop"`；全集仍未知 | §12.1 |
-| 未知事件类型 | **诊断 + 忽略，绝不抛错** | ⚪ 保守默认（实测未复现） | — |
+| `step_finish` 的 `reason` 取值 | 未知值映射为 `error` + `UNKNOWN` | 🟡 **部分实测**：已见 `"tool-calls"` / `"stop"` / `"unknown"`（2026-10-16 空响应）；全集仍未知 | §12.1 |
+| 未知事件类型 | **诊断 + 忽略，绝不抛错** | ✅ **已实测**（2026-10-16）：`type:"error"` 事件走此路径，未 crash（但应显式映射，见 §6.2） | — |
 | 只有 `tool_use` 没有 `text` | `finish(reason="tool-calls", code="TOOL_ONLY_RESPONSE")` | ⚪ 保守默认 | — |
-| 没有任何 `text` 且 `reason=stop` | `finish(reason="error", code="EMPTY_RESPONSE")` | ⚪ 保守默认 | — |
+| 没有任何 `text` 且 `reason=stop` | `finish(reason="error", code="EMPTY_RESPONSE")` | 🟡 **部分实测**（2026-10-16）：真实空响应为 `reason="unknown"` + 全零 tokens（映射 `error+UNKNOWN`）；`reason="stop"` 空正文变体未复现 | — |
 | JSON 半行 / 截断 | `protocol-line` 诊断 + 跳过该行 | ⚪ 保守默认（fake CLI T06 覆盖） | — |
 | stdout 混入非 JSON | 同上，**不污染正文** | ⚪ 保守默认（fake CLI T07 覆盖） | — |
 | 单行超长（> 1 MiB） | 截断 + `protocol-line` 诊断 | ✅ 可切换 `maxLineBytes` | — |
@@ -318,7 +319,7 @@ part.state.output   工具输出文本
 
 ### 6.4 错误通道（2026-10-15 实测新增）
 
-🔴 **失败不是通过 stdout JSON 事件表达的，而是 `stderr` + 非零退出码。** 实测（[CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §12.3）：
+🔴 **会话/启动类失败不是通过 stdout JSON 事件表达的，而是 `stderr` + 非零退出码。** ⚠️ **2026-10-16 补充**：**上游推理失败**另有一条 stdout 通道 —— `type:"error"` 事件（见 §6.2）；判定链目前把它归入第 4 步"有事件但无 finish → `PROTOCOL_ERROR`"，应改进为 `UPSTREAM_ERROR`。实测（[CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §12.3）：
 
 ```text
 EXIT code=1
@@ -605,18 +606,18 @@ FAKE_MODE=session-echo    回显收到的 --session（测续接透传）
 
 | # | 用例 | 产出结论 |
 |---|---|---|
-| R01 | 正常一轮 | 事件序列 / 耗时基线 |
-| R02 | 传 `--session` 续接 | 续接是否跨进程成立 |
-| R03 | `--session` 指向不存在的 ID | ✅ **已实测**（CLI-BEHAVIOR §12.3）：exit 1 + stderr `Session not found`。回归验证 §6.4 判定链 |
-| R04 | 同一 session 换 model | 是否允许 |
-| R05 | `--dir` 相对路径 | 是否要求绝对路径 |
-| R06 | `--dir` 不存在 | 行为 → 定 `WORKSPACE_INVALID` 判定 |
-| R07 | 触发 `tool_use` 的 prompt | `tool_use` 完整结构 |
-| R08 | 长回答 | 是否有多条 `text` / 多个 `step_finish`，usage 累加 or 覆盖 |
-| R09 | 取消后查 session | 中断内容是否已持久化 |
-| R10 | 失败路径抓 stderr | 非 JSON stderr 形态 |
-| R11 | **连续 20 轮进程归零** | PID 基线比对，**禁止 `taskkill /IM`** |
-| R12 | 直接 spawn exe 后 `child.kill()` | 复验 CLI-BEHAVIOR §5.4 |
+| R01 | 正常一轮 | ✅ **2026-10-16 集成**：`step_start → text → step_finish`，单轮 5–7s |
+| R02 | 传 `--session` 续接 | ✅ **2026-10-16 集成**：跨进程续接成立 |
+| R03 | `--session` 指向不存在的 ID | ✅ **已实测**（CLI-BEHAVIOR §12.3 + 2026-10-16 集成）：exit 1 + stderr `Session not found` → resolve(`SESSION_INVALID`)。回归验证 §6.4 判定链（断言按 I4 修正：resolve 不 reject） |
+| R04 | 同一 session 换 model | 是否允许（留待子项目 3/4） |
+| R05 | `--dir` 相对路径 | ✅ **2026-10-16 集成**：桥内 resolve 为绝对路径；纯相对且不存在 → `WORKSPACE_INVALID` |
+| R06 | `--dir` 不存在 | ✅ **2026-10-16 集成**：→ `WORKSPACE_INVALID` |
+| R07 | 触发 `tool_use` 的 prompt | ✅ **2026-10-16 集成**：tool 事件不污染正文 |
+| R08 | 长回答 | ✅ **2026-10-16 集成**：整段 text；usage 跨 step 累加非零 |
+| R09 | 取消后查 session | 中断内容是否已持久化（留待子项目 3/4） |
+| R10 | 失败路径抓 stderr | 非 JSON stderr 形态（留待子项目 3/4；形态已有 CLI-BEHAVIOR §12.3 实测） |
+| R11 | **连续 20 轮进程归零** | ✅ **2026-10-16 集成**（5 轮版）：按 CLI 进程树映像名基线归零；20 轮版留待回归加跑。**禁止 `taskkill /IM`** |
+| R12 | 直接 spawn exe 后 `child.kill()` | 复验 CLI-BEHAVIOR §5.4（单测已覆盖"取消后被 spawn 的进程会消失"） |
 
 ### 10.6 测试环境注意事项
 

@@ -3,6 +3,7 @@
 > 记录时间：2026-10-15  
 > 当前状态：CLI 无头调用与 CLI → 插件输入格式已验证；纯 HTTP 免费推理被上游阻断；尚未开始正式 Adapter 实现。  
 > **2026-10-15 补充：** OpenCode CLI 的 spawn / 参数保真 / 进程树行为已实测，见 [docs/CLI-BEHAVIOR.md](./docs/CLI-BEHAVIOR.md)。该实测**修正了本文 3A 节的 4 处结论**（已在原处标注），实现时以 CLI-BEHAVIOR.md 为准。
+> **2026-10-16 第三轮：** CliBridge 模块（OC → 插件段）已实现并通过单测 103 条；真实 CLI 集成测试 R01–R08、R11 全部通过（8/8）。详见 3A.9。
 
 ---
 
@@ -546,14 +547,26 @@ opencode-cli.exe serve
 - [x] 一个 DSH 请求中多个 `step_finish` 时 usage 是覆盖还是累加 → **每个 step 报增量，必须累加**（验算 `total = input+output+reasoning+cache.read` 成立）
 - [x] CLI 启动阶段和首事件阶段的超时默认值 → `startup 30s / firstEvent 45s / idle 300s / total 600s / shutdown 3s`（⚠️ `idle` 不能用 120s：实测单次生成静默 46.5s）
 
+**2026-10-16 第三轮补充观测：**
+
+- **免费推理故障窗口**（当日上午约 1 小时，随后自动恢复）：`mimo-v2.6-flash-free` 报 stdout `type:"error"` → `UnknownError: Unexpected server error`；`deepseek-v4-flash-free` 报 400 `Model is unavailable`；`north-mini-code-free` / `ling-3.0-flash-free` / `laguna-s-2.1-free` 同报 UnknownError；`nemotron-3-ultra-free` 静默约 5 分钟后返回空响应。故障期间集成 R01/R02/R07/R08 失败，恢复后 8/8 通过。
+- **模型目录漂移**：`opencode/mimo-v2.5-free` 报 410 `ModelDeprecated`（提示改用 `mimo-v2.6-flash-free`），但 `opencode models` 仍列出 `mimo-v2.5-free` 且不含 v2.6 —— **目录与真实可用性不一致，不能只信 `opencode models`**（影响 TODO-06/07 的目录策略）。
+- **集成 R03 断言修正**：计划原文 `assert.rejects` 与 spec I4 / Ruling F14 冲突 —— `runCliBridge` 对执行期失败 resolve（`finishReason="error"` + `errorCode`），仅建立期错误 reject。断言已按 spec 改正。
+- **集成 R11 断言修正**：全机 PID 基线会误报无关进程（与 9b44c6e 修正单测同因），收窄为 CLI 进程树映像名（`opencode*.exe` / `git.exe`）+ 宽限复检。
+
+- [x] **第三轮新答** stdout 是否存在 `error` 事件 → **存在**（修正上文"未见 `error` 事件"）：`{"type":"error","sessionID":...,"error":{"name":"UnknownError"|"APIError","data":{"message","statusCode?","isRetryable?","responseHeaders?","responseBody?","metadata?"}}}`，随后 exit 1。当前实现按未知事件处理（诊断+忽略），错误码由 classifyFailure 兜底 `PROTOCOL_ERROR`；**改进项：显式映射 `UPSTREAM_ERROR`（子项目 3 前处理）**
+- [x] **第三轮新答** `step_finish.reason` 全集补充 → 实测见 `"unknown"`（nemotron 空响应，tokens 全零、无正文、exit 0），保守映射 `error+UNKNOWN` 生效
+- [x] **第三轮新答** session 校验与模型推理的先后 → `--session` 失效**优先于**推理报错（stderr `Session not found` + exit 1），推理故障不影响 `SESSION_INVALID` 分类
+- [x] **第三轮新答** 空正文真实形态（部分）→ 实测为 `reason="unknown"` + 全零 tokens + exit 0；`reason="stop"` 空正文变体仍未复现，实现按 `EMPTY_RESPONSE` 保守处理
+- [x] **第三轮新答** JSON 半行 / 超长行 / 进程提前关闭的处理 → 实现定义 + fake CLI 单测覆盖（`protocol-line` 诊断、超长行截断不 OOM、无 finish 提前退出 → `PROTOCOL_ERROR` 兜底）
+- [x] **第三轮集成回归** R01–R08、R11 全部通过（8/8）：R01 正常往返 5–7s、事件序列 `step_start → text → step_finish`；R02 跨进程续接成立；R03 无效 session → resolve(`SESSION_INVALID`)；R05/R06 → `WORKSPACE_INVALID`；R07 tool 事件不污染正文；R08 整段 text + usage 累加非零；R11 连续 5 轮进程归零
+
 **仍未回答：**
 
-- [ ] 中途 kill 后 session 是否已经持久化；
-- [ ] `--session` 与 `--model` 换模型时是否允许；
+- [ ] 中途 kill 后 session 是否已经持久化（R09，留待子项目 3/4）；
+- [ ] `--session` 与 `--model` 换模型时是否允许（R04）；
 - [ ] `--session` 与 `--dir` 不一致时的行为；
-- [ ] 没有 `text`、只有 `tool_use` 时如何结束；
-- [ ] JSON 行超长、进程提前关闭、stdout 半行的处理；
-- [ ] 空正文且 `reason="stop"` 时的真实形态。
+- [ ] 没有 `text`、只有 `tool_use` 时如何结束（设计按 `TOOL_ONLY_RESPONSE`，真实 CLI 纯 tool 场景未复现）。
 
 ### 3A.10 对下一阶段的直接影响
 

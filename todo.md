@@ -12,14 +12,14 @@
 |---|---|---|
 | DSH → 插件 Adapter | 未验证 | 尚未接入 `LlmAdapter` |
 | 插件 → 当前聊天 workspace | 未验证 | 尚未确认如何从 DSH 会话取得工作区 |
-| 插件 → 模型目录 | 部分验证 | HTTP `/models` 可读；CLI `opencode models` 可用 |
-| 插件 → OpenCode CLI 进程 | 已验证 | `opencode run --format json` 可无头执行 |
-| CLI → 免费模型 | 已验证 | `opencode/mimo-v2.6-flash-free` 可返回正文 |
+| 插件 → 模型目录 | 部分验证 | HTTP `/models` 可读；CLI `opencode models` 可用；⚠️ 目录与真实可用性不一致（见 TODO-06） |
+| 插件 → OpenCode CLI 进程 | 已验证 | `opencode run --format json` 可无头执行；CliBridge 进程壳（spawn/超时/取消/清理）单测全绿 |
+| CLI → 免费模型 | 已验证 | `opencode/mimo-v2.6-flash-free` 可返回正文（2026-10-16 曾有约 1 小时故障窗口，已恢复） |
 | CLI session 续接 | 已验证 | 同一 `--session` 可跨进程保留上下文 |
-| CLI JSON → 插件内部事件 | 部分验证 | 已看到 `step_start`、`text`、`step_finish`、`tool_use` |
+| CLI JSON → 插件内部事件 | 已验证 | `step_start`、`text`、`step_finish`、`tool_use`；**新发现 stdout `type:"error"` 事件** |
 | 插件内部事件 → DSH chunk | 未实现 | 尚未验证字段和 index 规则 |
 | DSH chunk → UI | 未验证 | 尚未通过真实 DSH 聊天验证 |
-| 取消与进程清理 | 未验证 | 尚未完成 abort、超时、进程树清理验证 |
+| 取消与进程清理 | 已验证 | 五层超时 + AbortSignal + `taskkill /PID /T` 进程树清理，单测覆盖 |
 
 结论：
 
@@ -405,17 +405,19 @@ opencode --version → 1.19.0
 
 **需要回答：**
 
-- [ ] Windows 下应 spawn `.cmd` 还是 `.exe`；
-- [ ] Node spawn 应使用 `shell: true` 还是直接执行 exe；
+- [x] Windows 下应 spawn `.cmd` 还是 `.exe`；
+- [x] Node spawn 应使用 `shell: true` 还是直接执行 exe；
 - [ ] DSH host 进程 PATH 是否包含 npm global 目录；
-- [ ] 用户未安装 CLI 时如何提示；
+- [x] 用户未安装 CLI 时如何提示；
 - [ ] CLI 版本过低时如何处理。
 
 **完成标准：**
 
 - [ ] 在 DSH host 环境中可稳定发现 CLI；
-- [ ] 错误信息包含安装提示；
-- [ ] 不依赖 PowerShell wrapper。
+- [x] 错误信息包含安装提示；
+- [x] 不依赖 PowerShell wrapper。
+
+**结论（2026-10-16）：** 四级发现已实现（`src/discover-cli.ts` + 7 条单测）：显式 command → PATH → npm 全局布局 → `CLI_NOT_FOUND`（错误消息含 `npm i -g opencode-ai` 安装提示）。Windows 下命中 `.cmd`/`.ps1` shim 时解析真身 `opencode.exe` 作为执行入口，禁 `shell: true`（Node 24 spawn `.cmd` 直接 `EINVAL`）。真实 CLI 集成 R01–R08、R11 全部走该发现路径通过。DSH host PATH 与版本下限检查留待子项目 3。
 
 ---
 
@@ -434,33 +436,35 @@ opencode run
 
 **需要排查：**
 
-- [ ] `--dir` 是相对路径还是绝对路径；
-- [ ] workspace 不存在时的行为；
-- [ ] `--session` 不存在时是否自动创建；
-- [ ] `--session` 失效时的行为；
+- [x] `--dir` 是相对路径还是绝对路径；
+- [x] workspace 不存在时的行为；
+- [x] `--session` 不存在时是否自动创建；
+- [x] `--session` 失效时的行为；
 - [ ] prompt 是否支持多行和系统提示；
 - [ ] `--agent` 是否需要显式设置；
 - [ ] `--auto` 是否会影响工具调用；
-- [ ] `--format json` 是否始终逐行输出；
-- [ ] 是否存在 stdout/stderr 混杂日志；
+- [x] `--format json` 是否始终逐行输出；
+- [x] 是否存在 stdout/stderr 混杂日志；
 - [ ] `--print-logs` 是否会污染 JSON；
 - [ ] `--variant` 是否可用于 reasoning effort；
 - [ ] 是否有参数控制工具调用。
 
 **MVP 决策：**
 
-- [ ] 不开启交互模式；
-- [ ] 不开启 share；
-- [ ] 不自动允许危险权限；
-- [ ] 使用明确 model ID；
-- [ ] 使用 `--format json`；
-- [ ] 不把用户 prompt 拼进 shell 字符串，使用参数数组。
+- [x] 不开启交互模式；
+- [x] 不开启 share；
+- [x] 不自动允许危险权限；
+- [x] 使用明确 model ID；
+- [x] 使用 `--format json`；
+- [x] 不把用户 prompt 拼进 shell 字符串，使用参数数组。
 
 **完成标准：**
 
-- [ ] 参数构造有单元测试；
-- [ ] 特殊字符不会破坏命令；
-- [ ] workspace、model、session 都能验证生效。
+- [x] 参数构造有单元测试；
+- [x] 特殊字符不会破坏命令；
+- [x] workspace、model、session 都能验证生效。
+
+**结论（2026-10-16）：** 参数形态 `run --dir <绝对路径> --model <provider/model> --format json [--session <id>] <prompt>`，一律 argv 数组（G2，禁 `shell:true`）。`--dir` 传绝对路径：桥内先 resolve 再校验，相对且不存在 / 目录不存在 → `WORKSPACE_INVALID`（集成 R05/R06 验证）；`--session` **不自动创建**，失效即 exit 1 + stderr `Session not found`（R03）；prompt 走最后一个 argv，多行与特殊字符天然安全（fake CLI `session-echo` 模式 + 单测验证参数保真）。
 
 ---
 
@@ -520,26 +524,26 @@ step_finish
 
 **需要排查的事件类型：**
 
-- [ ] `step_start`
-- [ ] `step_finish`
-- [ ] `text`
+- [x] `step_start`
+- [x] `step_finish`
+- [x] `text`
 - [ ] `reasoning` / thinking
-- [ ] `tool_use`
+- [x] `tool_use`
 - [ ] `tool_result`
 - [ ] `retry`
-- [ ] `error`
+- [x] `error`（2026-10-16 新见，见结论）
 - [ ] `file` / patch / snapshot
 - [ ] session 创建/删除事件
 - [ ] 未知事件
 
 **需要回答：**
 
-- [ ] 每行是否严格是一个 JSON 对象；
-- [ ] 是否可能有空行；
-- [ ] 是否可能输出非 JSON stderr；
-- [ ] 是否可能一行 JSON 被截断；
+- [x] 每行是否严格是一个 JSON 对象；
+- [x] 是否可能有空行；
+- [x] 是否可能输出非 JSON stderr；
+- [x] 是否可能一行 JSON 被截断；
 - [ ] 事件是否保证有序；
-- [ ] `timestamp` 与 `sessionID` 是否每条都有；
+- [x] `timestamp` 与 `sessionID` 是否每条都有；
 - [ ] 多 step 时 part 的关系是什么。
 
 **解析策略：**
@@ -553,10 +557,12 @@ stdout 按换行切分
 
 **完成标准：**
 
-- [ ] 能处理正常输出；
-- [ ] 能处理非 JSON 污染；
-- [ ] 能处理进程提前退出；
-- [ ] 能限制单行和总输出大小。
+- [x] 能处理正常输出；
+- [x] 能处理非 JSON 污染；
+- [x] 能处理进程提前退出；
+- [x] 能限制单行和总输出大小。
+
+**结论（2026-10-16）：** stdout 严格一行一个 JSON 对象；解析器（`src/parse-lines.ts` + 单测）处理 CRLF、空行、跨 chunk 半行缓冲、超长行（>1 MiB 截断上报不 OOM）；非 JSON 行 → `protocol-line` 诊断、不污染正文；进程提前退出无 finish → finalize 兜底 `PROTOCOL_ERROR`。**新发现（2026-10-16）：stdout 存在 `type:"error"` 事件**（上游推理失败时，见 memory.md 3A.9），当前按未知事件处理（诊断+忽略），错误码由 classifyFailure 兜底 —— 改进项：显式映射 `UPSTREAM_ERROR`。
 
 ---
 
@@ -570,12 +576,12 @@ text.part.text 一次给出完整正文
 
 **需要排查：**
 
-- [ ] 是否存在 `delta` 字段；
-- [ ] 是否存在多条 text 事件；
-- [ ] 同一 messageID 下是否可多段；
-- [ ] text 是否可能被 tool_use 分隔；
-- [ ] text 是否包含 reasoning；
-- [ ] 文本结束时是否保证有 `step_finish`；
+- [x] 是否存在 `delta` 字段；
+- [x] 是否存在多条 text 事件；
+- [x] 同一 messageID 下是否可多段；
+- [x] text 是否可能被 tool_use 分隔；
+- [x] text 是否包含 reasoning；
+- [x] 文本结束时是否保证有 `step_finish`；
 - [ ] 中断时 text 是否完整写入 session。
 
 **DSH 同步候选：**
@@ -604,10 +610,12 @@ text.part.text 一次给出完整正文
 
 **完成标准：**
 
-- [ ] 能聚合多个 text；
+- [x] 能聚合多个 text；
 - [ ] 能跨 tool_use 保持正确 index；
 - [ ] 能生成 DSH 可接受的连续 chunk；
-- [ ] 不重复发送正文。
+- [x] 不重复发送正文。
+
+**结论（2026-10-16）：** `text` 为整段一次性（实测 1 条 len=1248；R08 长回答通过），无 `delta` 字段；同一 `messageID` 多段按序拼接、不重复发（单测覆盖）；`text` 不含 reasoning；tool 事件与 text 混合出现时正文不受污染（R07）。DSH 流式体验按方案 A 由上层切块模拟，切块器独立封装。"跨 tool_use 的 index"与"DSH 连续 chunk"属 DSH 段（子项目 3）。
 
 ---
 
@@ -646,7 +654,7 @@ cost → DSH 是否消费？
 
 **需要确认：**
 
-- [ ] 一个请求有多个 `step_finish` 时是覆盖还是累加；
+- [x] 一个请求有多个 `step_finish` 时是覆盖还是累加；
 - [ ] usage 必须在 finish 前发送吗；
 - [ ] 错误时是否必须发送 usage；
 - [ ] 取消时是否发送已知 usage；
@@ -655,9 +663,11 @@ cost → DSH 是否消费？
 
 **完成标准：**
 
-- [ ] 字段映射有单元测试；
-- [ ] 多 step usage 策略有明确结论；
-- [ ] 正常、错误、取消三条路径都覆盖。
+- [x] 字段映射有单元测试；
+- [x] 多 step usage 策略有明确结论；
+- [x] 正常、错误、取消三条路径都覆盖。
+
+**结论（2026-10-16）：** usage 按 `step_finish` 报**增量**、跨 step **累加**（验算 `total = input+output+reasoning+cache.read` 成立）；字段映射 `tokens.{input,output,reasoning,cache.read,cache.write,total}` → `CliUsage`，`cost` 单独保留。R08 验证长回答 usage 非零；单测覆盖 sum/last 两种模式与 cache 缺省按 0。错误/取消路径 usage 为全零。"何时向 DSH 发送 usage"属 DSH 段（TODO-15/16）。
 
 ---
 
@@ -675,12 +685,12 @@ error
 
 **OpenCode 可能值：**
 
-- [ ] `stop`
-- [ ] `tool-calls`
+- [x] `stop`
+- [x] `tool-calls`
 - [ ] `length` / max tokens
 - [ ] `error`
 - [ ] abort / interrupted
-- [ ] 其他未知 reason
+- [x] 其他未知 reason（实测见 `"unknown"`）
 
 **需要记录映射表：**
 
@@ -694,9 +704,11 @@ OpenCode reason → DSH reason
 
 **完成标准：**
 
-- [ ] 每个已知值有映射；
-- [ ] 未知值不会导致 crash；
-- [ ] 错误消息保留原始信息。
+- [x] 每个已知值有映射；
+- [x] 未知值不会导致 crash；
+- [x] 错误消息保留原始信息。
+
+**结论（2026-10-16）：** 映射表已实现（`toFinishMapping`，单测 12 条）：`stop→stop`（无正文→`EMPTY_RESPONSE`）、`length`/`max_tokens`/`max-tokens`/`MaxTokens→max-tokens`、`tool-calls→tool-calls`（无正文→`TOOL_ONLY_RESPONSE`）、未知值→`error+UNKNOWN` 保留 `rawReason`、缺 reason→`PROTOCOL_ERROR`。**新见值 `reason:"unknown"`**（2026-10-16 nemotron 空响应场景），保守映射行为符合预期。
 
 ---
 
@@ -838,19 +850,21 @@ spawn(opencodeExe, argsArray, {
 
 **需要验证：**
 
-- [ ] 直接 spawn `.exe` 是否可行；
-- [ ] 是否需要 `.cmd`；
-- [ ] 是否需要 `shell: true`；
-- [ ] `cwd` 与 `--dir` 是否需要同时设置；
+- [x] 直接 spawn `.exe` 是否可行；
+- [x] 是否需要 `.cmd`；
+- [x] 是否需要 `shell: true`；
+- [x] `cwd` 与 `--dir` 是否需要同时设置；
 - [ ] Windows 下环境变量是否包含必要 PATH；
-- [ ] stdout 是否逐块到达；
-- [ ] stderr 是否可单独收集。
+- [x] stdout 是否逐块到达；
+- [x] stderr 是否可单独收集。
 
 **完成标准：**
 
-- [ ] 不通过字符串 shell 拼接；
-- [ ] 特殊路径可工作；
+- [x] 不通过字符串 shell 拼接；
+- [x] 特殊路径可工作；
 - [ ] DSH host 中可执行。
+
+**结论（2026-10-16）：** `spawn(opencode.exe, argv数组, { cwd: workspace, stdio: ["ignore","pipe","pipe"], windowsHide: true })`（`src/run-cli.ts`）。真身 `.exe` 直接可执行、`.cmd` 不需要且禁用（Node 24 直接 `EINVAL`）；`cwd` 与 `--dir` 双保险同时设置；stdout/stderr 双管道分流（fake CLI 16 种模式单测 + 真实 CLI 集成 8 条均走该路径）。DSH host 可执行性留待子项目 3 验证。
 
 ---
 
@@ -868,11 +882,11 @@ shutdown timeout：回答结束后等待进程退出
 
 **需要决定默认值：**
 
-- [ ] startup：例如 15 秒；
-- [ ] first event：例如 30 秒；
-- [ ] body idle：例如 120 秒；
-- [ ] total：例如 10 分钟；
-- [ ] shutdown：例如 3 秒；
+- [x] startup：例如 15 秒；
+- [x] first event：例如 30 秒；
+- [x] body idle：例如 120 秒；
+- [x] total：例如 10 分钟；
+- [x] shutdown：例如 3 秒；
 - [ ] 不同模型是否不同。
 
 **行为要求：**
@@ -883,9 +897,11 @@ shutdown timeout：回答结束后等待进程退出
 
 **完成标准：**
 
-- [ ] 每个计时器都有清理；
-- [ ] 取消和超时不竞争；
-- [ ] 不留下子进程。
+- [x] 每个计时器都有清理；
+- [x] 取消和超时不竞争；
+- [x] 不留下子进程。
+
+**结论（2026-10-16）：** 五层超时已实现（`DEFAULT_TIMEOUTS`）：`startup 30s / firstEvent 45s / idle 300s / total 600s / shutdown 3s`；`idle` 自上一个事件起算（实测单次生成静默 46.5s 打底，不能用 120s）。每层触发与不误杀均有单测（含 firstEvent 到达后长跑不误杀、idle 阈值内长静默正常完成）；`settle()` 单出口保证取消与超时不竞争；集成 R11 验证不留下子进程。
 
 ---
 
@@ -897,13 +913,13 @@ DSH `signal.abort` 后，如何确保 CLI 及子进程全部退出？
 
 **需要排查：**
 
-- [ ] Node `child.kill()` 是否足够；
-- [ ] 是否需要 `taskkill /T /F`；
-- [ ] 是否需要 `process.kill(-pid)`；
-- [ ] Windows 下 `.cmd` 的子进程归属；
-- [ ] abort listener 是否只注册一次；
-- [ ] 取消后是否还要读取 stdout；
-- [ ] 取消后是否仍发 finish。
+- [x] Node `child.kill()` 是否足够；
+- [x] 是否需要 `taskkill /T /F`；
+- [x] 是否需要 `process.kill(-pid)`；
+- [x] Windows 下 `.cmd` 的子进程归属；
+- [x] abort listener 是否只注册一次；
+- [x] 取消后是否还要读取 stdout；
+- [x] 取消后是否仍发 finish。
 
 **建议流程：**
 
@@ -919,10 +935,12 @@ DSH abort
 
 **完成标准：**
 
-- [ ] 每轮请求结束后进程数归零；
+- [x] 每轮请求结束后进程数归零；
 - [ ] 连续 20 轮无残留；
-- [ ] 取消没有 unhandled rejection；
+- [x] 取消没有 unhandled rejection；
 - [ ] DSH UI 不卡住。
+
+**结论（2026-10-16）：** 取消经 AbortSignal → `taskkill /PID <pid> /T /F` 杀进程树（CLI 派生 `git`，`child.kill()` 只杀直接子进程、不够）；清理只按 PID，禁 `taskkill /IM`；进程归零断言按本次进程树映像名基线（全机 PID/`opencode` grep 会误伤 OpenCode Desktop 常驻 `opencode-cli.exe`）。单测覆盖取消、进入即中止、共享 signal 多请求无 listener 泄漏、取消后被 spawn 进程消失；集成 R11 连续 5 轮归零（20 轮版留待回归加跑）。取消后以 `finishReason="aborted"` resolve（spec I4），不发多余 finish 事件。DSH UI 表现留待子项目 3/4。
 
 ---
 
@@ -947,12 +965,12 @@ UNKNOWN
 
 **需要回答：**
 
-- [ ] 哪些可重试；
-- [ ] 哪些只报告；
+- [x] 哪些可重试；
+- [x] 哪些只报告；
 - [ ] 错误信息如何传给 DSH；
-- [ ] 是否保留 stderr；
-- [ ] 是否限制错误长度；
-- [ ] 如何避免泄露敏感路径或环境变量。
+- [x] 是否保留 stderr；
+- [x] 是否限制错误长度；
+- [x] 如何避免泄露敏感路径或环境变量。
 
 **MVP 建议：**
 
@@ -964,9 +982,11 @@ UNKNOWN
 
 **完成标准：**
 
-- [ ] 错误分类有单元测试；
-- [ ] 每类错误产生确定 finish reason；
-- [ ] 日志和用户消息边界清晰。
+- [x] 错误分类有单元测试；
+- [x] 每类错误产生确定 finish reason；
+- [x] 日志和用户消息边界清晰。
+
+**结论（2026-10-16）：** 12 类 ErrorCode + 判定链（取消 > 超时 > session 失效 > 无 finish 退出 > 其他）已实现并单测覆盖；stderr 全程收集、剥 ANSI 后仅用于细分 `ErrorCode`（主判据 exit code + stdout 事件），保留 2000 字符进 `diagnostics`、不进正文。可重试仅 `CLI_START_FAILED`/`TIMEOUT` 且未产出正文（`canRetry`）；执行期失败 `runCliBridge` resolve（`finishReason:"error"+errorCode`，spec I4），建立期错误 reject。**新发现（2026-10-16）：上游推理错误走 stdout `type:"error"` 事件**（payload 含 name/statusCode/isRetryable/responseBody），当前只进 diagnostics、错误码由 classifyFailure 兜底为 `PROTOCOL_ERROR` —— 改进项：显式映射 `UPSTREAM_ERROR`（子项目 3 前处理，见 memory.md 3A.9）。
 
 ---
 

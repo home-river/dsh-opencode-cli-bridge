@@ -6,13 +6,11 @@
 
 ## 当前阶段
 
-当前仅完成工程骨架与目标文档：
+CliBridge（OC → 插件段）已完成：CLI 四级发现、进程壳（spawn/stdio 分流）、JSON Lines 解析、事件归一化、错误分类、五层超时、取消与 Windows 进程树清理，并通过单测 103 条与真实 CLI 集成测试（R01–R08、R11）。下一步是 DSH 插件段（`LlmAdapter` 合同、StreamChunk 转换、模型目录与缓存）。
 
-- `package.json`：插件包标识和基础脚本。
-- `tsconfig.json`：TypeScript 编译边界。
+- `src/`：CliBridge 模块（`types` / `errors` / `parse-lines` / `map-events` / `discover-cli` / `run-cli` / `cli-bridge` / `index`）。
+- `test/`：fake CLI 单测（`node:test`，零 runtime 依赖）+ 真实 CLI 集成测试（`OCBRIDGE_IT=1` 时启用）。
 - `docs/GOALS.md`：项目目的、MVP 功能、验收标准与后续实现阶段。
-
-Adapter 实现尚未开始。
 
 ## 计划中的请求链路
 
@@ -44,10 +42,12 @@ MVP 目标是：
 [x] 工程目录
 [x] 包与 TypeScript 基础配置
 [x] 目的和目标功能实现文档
-[ ] 插件入口与配置
-[ ] 模型目录与缓存
+[x] CliBridge：CLI 发现 / spawn / JSON Lines 解析 / 事件归一化
+[x] CliBridge：错误分类 / 五层超时 / 取消与进程树清理
+[x] 测试：fake CLI 单测 + 真实 CLI 集成测试
 [ ] DSH LlmAdapter 合同
-[ ] OpenCode 流式请求
-[ ] 错误、重试与取消
+[ ] 插件入口与配置
+[ ] DSH StreamChunk 转换
+[ ] 模型目录与缓存
 [ ] DSH 实机联调
 ```
