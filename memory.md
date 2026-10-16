@@ -1,7 +1,8 @@
 # dsh-opencode-bridge 开发要点记录
 
 > 记录时间：2026-10-15  
-> 当前状态：CLI 无头调用与 CLI → 插件输入格式已验证；纯 HTTP 免费推理被上游阻断；尚未开始正式 Adapter 实现。
+> 当前状态：CLI 无头调用与 CLI → 插件输入格式已验证；纯 HTTP 免费推理被上游阻断；尚未开始正式 Adapter 实现。  
+> **2026-10-15 补充：** OpenCode CLI 的 spawn / 参数保真 / 进程树行为已实测，见 [docs/CLI-BEHAVIOR.md](./docs/CLI-BEHAVIOR.md)。该实测**修正了本文 3A 节的 4 处结论**（已在原处标注），实现时以 CLI-BEHAVIOR.md 为准。
 
 ---
 
@@ -305,11 +306,13 @@ ELAPSED_MS=11305
 
 结论：
 
-- `opencode.cmd` 可作为插件探测到的默认命令；
+- ~~`opencode.cmd` 可作为插件探测到的默认命令~~  
+  **【2026-10-15 修正】** `.cmd` **只能作为发现线索**，执行入口必须用真身 `opencode.exe`。理由：Node 24 上 `spawn(opencode.cmd, args)` 无 shell 直接抛 `EINVAL`；带 `shell: true` 则参数被 `%*` 改写、可被命令注入，且取消时留下孤儿 `opencode.exe`。详见 [docs/CLI-BEHAVIOR.md](./docs/CLI-BEHAVIOR.md) §3–§5。
 - 参数数组可正常传递 `--dir`、`--model`、`--format`；
 - CLI 不进入交互界面；
 - 回答结束后自行退出；
-- 正常路径耗时约 11 秒，超时不能设置得过短。
+- ~~正常路径耗时约 11 秒，超时不能设置得过短。~~  
+  **【2026-10-15 修正】** 本次实测一轮真实问答 **21.4 秒**（`ELAPSED_MS=21352`），原 11 秒偏低。超时默认值按 21s+ 留量：`startup 30s / firstEvent 45s / idle 120s / total 10min / shutdown 3s`。
 
 ### 3A.3 stdout / stderr 分流
 
@@ -481,6 +484,15 @@ OpenCode PIDs after  = 空
 
 本次没有残留 `opencode` 进程。
 
+**【2026-10-15 补充】** 上面只覆盖了**正常路径**。实测发现取消路径的结论不同：
+
+- 走 `opencode.cmd`（`shell:true`）时 `child.kill()` 只杀 `cmd.exe`，**真身 `opencode.exe` 变孤儿继续运行**；
+- 直接 spawn `opencode.exe` 时 `child.kill()` 干净，2.5 秒内归零；
+- `opencode.exe` 自身单进程，但会派生 `git` 子进程（实测一次 8 个），因此**杀进程必须用 `taskkill /PID <pid> /T /F`**；
+- 进程归零验证**必须按 PID 基线**做，不能全机 grep `opencode`（会误伤 OpenCode Desktop 常驻进程）。
+
+详见 [docs/CLI-BEHAVIOR.md](./docs/CLI-BEHAVIOR.md) §5。
+
 另外观察到一个预先存在的：
 
 ```text
@@ -499,7 +511,9 @@ opencode-cli.exe serve
   sessionId?
 
 启动：
-  spawn(opencode.cmd, argsArray, { cwd: workspace })
+  spawn(opencodeExe, argsArray, { cwd: workspace })   // opencodeExe = 真身 .exe，不是 .cmd
+  【2026-10-15 修正】原记录为 spawn(opencode.cmd, argsArray, { cwd: workspace })
+  —— 该写法在 Node 24 上直接抛 EINVAL，不可用。禁止 shell:true，参数一律走 argv 数组。
 
 输出：
   stdout JSON Lines
