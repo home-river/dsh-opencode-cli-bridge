@@ -1,5 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
-import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { CliBridgeError } from "./errors.js";
 
@@ -48,11 +48,16 @@ export function resolveShimTarget(shimPath: string): string | null {
     return null;
   }
 
-  const m = /node_modules[\\/]opencode-ai[\\/]bin[\\/]opencode\.exe/i.exec(content);
+  const m = /(?:\.{1,2}[\\/])*node_modules[\\/]opencode-ai[\\/]bin[\\/]opencode\.exe/i.exec(content);
   if (!m) return null;
 
-  const target = resolve(dirname(shimPath), "node_modules", "opencode-ai", "bin", "opencode.exe");
-  return isFile(target) ? target : null;
+  // 优先采用 shim 内容里匹配到的完整相对路径（可能含 ..\ 前缀，覆盖 npm 全局 shim 指向
+  // lib/node_modules 的布局），再回落到 npm 标准布局，保持既有行为不变。
+  const fromContent = resolve(dirname(shimPath), m[0].replace(/[\\/]/g, sep));
+  if (isFile(fromContent)) return fromContent;
+
+  const npmLayout = resolve(dirname(shimPath), "node_modules", "opencode-ai", "bin", "opencode.exe");
+  return isFile(npmLayout) ? npmLayout : null;
 }
 
 function npmGlobalCandidate(env: Record<string, string | undefined>): string | null {
@@ -69,7 +74,7 @@ function npmGlobalCandidate(env: Record<string, string | undefined>): string | n
 /**
  * 四级回退（spec §9）：
  *   1. opts.command（显式绝对路径）
- *   2. PATH 上的 opencode（命中 .cmd/.ps1/.sh shim 时解析出真身 exe）
+ *   2. PATH 上的 opencode（命中 .cmd/.bat/.ps1 shim 时解析出真身 exe）
  *   3. npm 全局 node_modules/opencode-ai/bin/opencode.exe
  *   4. 抛 CLI_NOT_FOUND
  */

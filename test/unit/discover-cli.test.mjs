@@ -91,6 +91,24 @@ test("resolveShimTarget: 不是 shim 时返回 null", () => {
   assert.equal(resolveShimTarget("C:/nowhere/opencode.exe"), null);
 });
 
+test("resolveShimTarget: 按 shim 内容里的 ..\\ 相对路径解析（npm 全局 lib/ 布局）", () => {
+  const root = mkdtempSync(join(tmpdir(), "ocbridge-"));
+  try {
+    // 真身在 <root>/node_modules/...，shim 在 <root>/lib/，内容用 ..\ 指回去。
+    mkdirSync(join(root, "node_modules", "opencode-ai", "bin"), { recursive: true });
+    mkdirSync(join(root, "lib"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "opencode-ai", "bin", "opencode.exe"), "MZ fake binary");
+    const shimPath = join(root, "lib", "opencode.cmd");
+    writeFileSync(shimPath, '@ECHO off\r\n"%dp0%\\..\\node_modules\\opencode-ai\\bin\\opencode.exe"   %*\r\n');
+
+    const target = resolveShimTarget(shimPath);
+    const expected = join(root, "node_modules", "opencode-ai", "bin", "opencode.exe");
+    assert.equal(target, expected);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("显式 command 非绝对路径 -> CLI_NOT_FOUND（编程错误，不让它静默落到 PATH 查找）", async () => {
   await assert.rejects(
     () => discoverOpencodeCli({ command: "opencode.exe" }),
