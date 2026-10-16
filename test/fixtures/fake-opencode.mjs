@@ -5,9 +5,14 @@
 // =====================================================================
 import { appendFileSync, writeFileSync } from "node:fs";
 
-const MODE = process.env.FAKE_MODE ?? "normal";
 const SID = process.env.FAKE_SESSION_ID ?? "ses_fake_0001";
 const args = process.argv.slice(2);
+
+// 主控裁定：CliBridgeOptions 无 env 字段，mode 经 CLI 参数注入 ——
+// fake CLI 约定：argv 中第一个形如 "mode:xxx" 的位以此覆盖 FAKE_MODE；
+// 不含该前缀时行为不变（既有 FAKE_MODE env 路径共存，不受影响）。
+const MODE = args.find((a) => typeof a === "string" && a.startsWith("mode:"))?.slice(5)
+  ?? process.env.FAKE_MODE ?? "normal";
 
 function line(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");

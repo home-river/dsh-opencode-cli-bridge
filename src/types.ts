@@ -86,6 +86,8 @@ export interface CliBridgeResult {
   sessionId: string;
   usage: CliUsage;
   finishReason: FinishReason;
+  /** 执行期失败时的错误分类（Ruling F15）；正常完成时为 undefined */
+  errorCode?: ErrorCode;
   durationMs: number;
   exitCode: number | null;
   diagnostics: CliDiagnostic[];
