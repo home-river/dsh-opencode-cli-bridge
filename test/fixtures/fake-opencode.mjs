@@ -3,7 +3,7 @@
 // fake-opencode —— 可执行测试替身，模拟 opencode.exe 的 --format json 行为
 // 由 FAKE_MODE 环境变量控制。仅供测试，不是产品代码。
 // =====================================================================
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 const MODE = process.env.FAKE_MODE ?? "normal";
 const SID = process.env.FAKE_SESSION_ID ?? "ses_fake_0001";
@@ -33,6 +33,10 @@ function tool(msg) {
 }
 const T1 = { total: 100, input: 60, output: 20, reasoning: 10, cache: { read: 10, write: 0 } };
 const T2 = { total: 200, input: 120, output: 40, reasoning: 20, cache: { read: 20, write: 0 } };
+
+if (process.env.FAKE_PID_FILE) {
+  try { writeFileSync(process.env.FAKE_PID_FILE, String(process.pid)); } catch {}
+}
 
 if (process.env.FAKE_LOG_ARGS) {
   try { appendFileSync(process.env.FAKE_LOG_ARGS, JSON.stringify(args) + "\n"); } catch {}

@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DEFAULT_TIMEOUTS } from "../../lib/types.js";
 import { runCliProcess } from "../../lib/run-cli.js";
 
@@ -30,14 +31,28 @@ function makeOpts(mode, over = {}) {
   };
 }
 
-function tasklistPids() {
-  const r = spawnSync("tasklist", ["/FO", "CSV", "/NH"], { encoding: "utf8" });
-  const set = new Set();
-  for (const line of String(r.stdout || "").split(/\r?\n/)) {
-    const m = /^"([^"]*)","(\d+)"/.exec(line.trim());
-    if (m) set.add(Number(m[2]));
+async function readSpawnedPid(pidFile) {
+  for (let i = 0; i < 50; i++) {
+    try {
+      const pid = Number(readFileSync(pidFile, "utf8").trim());
+      if (Number.isInteger(pid) && pid > 0) return pid;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 100));
   }
-  return set;
+  throw new Error(`fake CLI 未写入 PID 文件: ${pidFile}`);
+}
+
+async function assertPidGone(pid) {
+  for (let i = 0; i < 20; i++) {
+    try {
+      process.kill(pid, 0);
+    } catch (err) {
+      if (err?.code === "ESRCH") return;
+      if (err?.code !== "EPERM") throw err;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.fail(`取消后进程仍在: pid=${pid}`);
 }
 
 test("正常模式：拿到 stdout 行、stderr 为空、exit=0", async () => {
@@ -150,20 +165,24 @@ test("进入时 signal 已中止：不 spawn 且立即返回 aborted", async () 
   assert.equal(out.exitCode, null);
 });
 
-test("取消后进程归零（按 PID 基线，禁止 taskkill /IM）", async () => {
-  const before = tasklistPids();
+test("取消后被 spawn 的进程会消失（按本次 PID 断言）", async () => {
+  const pidDir = mkdtempSync(join(tmpdir(), "fake-opencode-"));
+  const pidFile = join(pidDir, "fake.pid");
   const ac = new AbortController();
   const { opts } = makeOpts("hang", {
     signal: ac.signal,
     timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 30000, totalMs: 60000, shutdownMs: 1000 },
+    env: { ...process.env, FAKE_MODE: "hang", FAKE_PID_FILE: pidFile },
   });
   const p = runCliProcess(opts);
-  setTimeout(() => ac.abort(), 500);
-  await p;
-  await new Promise((r) => setTimeout(r, 1000));
-  const after = tasklistPids();
-  for (const pid of after) {
-    assert.ok(before.has(pid), `残留进程 pid=${pid}`);
+  try {
+    const pid = await readSpawnedPid(pidFile);
+    setTimeout(() => ac.abort(), 500);
+    const out = await p;
+    assert.equal(out.aborted, true);
+    await assertPidGone(pid);
+  } finally {
+    rmSync(pidDir, { recursive: true, force: true });
   }
 });
 
