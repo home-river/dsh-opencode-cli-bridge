@@ -88,6 +88,10 @@ export function classifyFailure(facts: FailureFacts): ErrorCode {
   }
 
   if (facts.exitCode === null) return "CLI_START_FAILED";
+
+  // exit 0：进程自称成功。但若全程没有 step_finish，说明协议没走完（判定链第 4 条「无 finish 即退出」）。
+  if (!facts.sawFinish) return "PROTOCOL_ERROR";
+
   return "UNKNOWN";
 }
 

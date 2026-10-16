@@ -107,6 +107,27 @@ test("classifyFailure: exit!=0 + 有事件但无 finish -> PROTOCOL_ERROR", () =
   );
 });
 
+test("classifyFailure: exit=0 但全程无 finish -> PROTOCOL_ERROR（协议没走完）", () => {
+  assert.equal(
+    classifyFailure({ aborted: false, timedOut: false, exitCode: 0, sawAnyEvent: true, sawFinish: false, stderrText: "" }),
+    "PROTOCOL_ERROR",
+  );
+});
+
+test("classifyFailure: exit=0 且有 finish -> UNKNOWN（不误判成协议错误）", () => {
+  assert.equal(
+    classifyFailure({ aborted: false, timedOut: false, exitCode: 0, sawAnyEvent: true, sawFinish: true, stderrText: "" }),
+    "UNKNOWN",
+  );
+});
+
+test("classifyFailure: exit=null 且未取消未超时 -> CLI_START_FAILED", () => {
+  assert.equal(
+    classifyFailure({ aborted: false, timedOut: false, exitCode: null, sawAnyEvent: false, sawFinish: false, stderrText: "" }),
+    "CLI_START_FAILED",
+  );
+});
+
 test("canRetry: 未产出正文且是启动失败/超时 -> 可重试", () => {
   assert.equal(canRetry("CLI_START_FAILED", false), true);
   assert.equal(canRetry("TIMEOUT", false), true);

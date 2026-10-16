@@ -94,6 +94,8 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
   let timedOutLayer: TimeoutLayer | null = null;
   let lastExit: { code: number | null; sig: string | null } | null = null;
   let settled = false;
+  /** stdout 行缓冲。终止时若留有残余（无换行的尾部半行）必须 flush，不得静默丢弃。 */
+  let stdoutBuf = "";
   // C1：spawn 后立刻捕获 pid（grace timer 触发时 child.pid 可能已为 undefined）
   const spawnedPid = child.pid ?? null;
   // C1：child.on("exit") 同步记录 lastExit 后，等待管道 20ms 收尾再触发的回调队列
@@ -167,6 +169,18 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
     opts.signal?.removeEventListener("abort", onAbort);
 
     const emit = (): void => {
+      // 尾部半行 flush：最后一行若没带换行符，行缓冲里会留残余。
+      // 静默丢弃会让「JSON 半行被截断」这种协议错误无法诊断（spec §6.3），
+      // 也可能丢掉无尾换行的合法末行。交给 onStdoutLine，由解析层判定它是合法行还是协议污染。
+      const tail = stdoutBuf;
+      stdoutBuf = "";
+      if (tail.length > 0) {
+        try {
+          opts.onStdoutLine(tail.endsWith("\r") ? tail.slice(0, -1) : tail);
+        } catch (e) {
+          stderrChunks.push(`run-cli: onStdoutLine callback threw: ${String(e)}\n`);
+        }
+      }
       resolveOutcome({
         exitCode: lastExit?.code ?? null,
         signal: lastExit?.sig ?? null,
@@ -222,7 +236,6 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
 
   // ---- stdio 收集 ----
   child.stdout?.setEncoding("utf8");
-  let stdoutBuf = "";
   child.stdout?.on("data", (chunk: string) => {
     markFirstEvent();
     // I3：消费方回调不得让异常窜进流机制
