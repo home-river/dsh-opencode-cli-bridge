@@ -133,6 +133,9 @@ export class OpenCodeEventMapper {
           cost: num(part.cost),
           code: mapping.code,
         });
+        if (mapping.code === "UNKNOWN") {
+          diagnostics.push({ kind: "unknown-event", raw });
+        }
         break;
       }
 

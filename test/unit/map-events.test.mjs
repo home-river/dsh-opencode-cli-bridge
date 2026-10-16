@@ -154,6 +154,11 @@ test("未知 reason -> finish(error, UNKNOWN) 保留原值", () => {
   assert.equal(r.events[0].kind, "finish");
   assert.equal(r.events[0].reason, "error");
   assert.equal(r.events[0].code, "UNKNOWN");
+
+  const unknownDiagnostics = r.diagnostics.filter((d) => d.kind === "unknown-event");
+  assert.equal(unknownDiagnostics.length, 1);
+  const [fin_diag] = unknownDiagnostics;
+  assert.equal(fin_diag.raw.part.reason, "brand-new-reason");
 });
 
 test("step_finish 缺 reason -> finish(error, PROTOCOL_ERROR)", () => {
