@@ -72,7 +72,7 @@ test("parseEventLine 对空串返回失败", () => {
 
 test("isRecord 判定", () => {
   assert.equal(isRecord({}), true);
-  assert.equal(isRecord([]), true);
+  assert.equal(isRecord([]), false);
   assert.equal(isRecord(null), false);
   assert.equal(isRecord("x"), false);
 });
