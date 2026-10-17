@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-CliBridge（OC → 插件段）已完成：CLI 四级发现、进程壳（spawn/stdio 分流）、JSON Lines 解析、事件归一化、错误分类、五层超时、取消与 Windows 进程树清理，并通过单测 103 条与真实 CLI 集成测试（R01–R08、R11）。下一步是 DSH 插件段（`LlmAdapter` 合同、StreamChunk 转换、模型目录与缓存）。
+CliBridge（OC → 插件段）已完成：CLI 四级发现、进程壳（spawn/stdio 分流）、JSON Lines 解析、事件归一化、错误分类、五层超时、取消与 Windows 进程树清理，并通过单测 103 条与真实 CLI 集成测试（R01–R08、R11）。DSH StreamChunk 转换器（子项目 2）已完成，`streamDshChunks` 端到端入口 + fake CLI 端到端测试全绿。下一步是 DSH 插件段（`LlmAdapter` 合同、模型目录与缓存）。
 
 - `src/`：CliBridge 模块（`types` / `errors` / `parse-lines` / `map-events` / `discover-cli` / `run-cli` / `cli-bridge` / `index`）。
 - `test/`：fake CLI 单测（`node:test`，零 runtime 依赖）+ 真实 CLI 集成测试（`OCBRIDGE_IT=1` 时启用）。
@@ -47,7 +47,7 @@ MVP 目标是：
 [x] 测试：fake CLI 单测 + 真实 CLI 集成测试
 [ ] DSH LlmAdapter 合同
 [ ] 插件入口与配置
-[ ] DSH StreamChunk 转换
+[x] DSH StreamChunk 转换（切块模拟流式，多 finish 折叠）
 [ ] 模型目录与缓存
 [ ] DSH 实机联调
 ```

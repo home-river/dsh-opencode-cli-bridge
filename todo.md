@@ -17,7 +17,7 @@
 | CLI → 免费模型 | 已验证 | `opencode/mimo-v2.6-flash-free` 可返回正文（2026-10-16 曾有约 1 小时故障窗口，已恢复） |
 | CLI session 续接 | 已验证 | 同一 `--session` 可跨进程保留上下文 |
 | CLI JSON → 插件内部事件 | 已验证 | `step_start`、`text`、`step_finish`、`tool_use`；**新发现 stdout `type:"error"` 事件** |
-| 插件内部事件 → DSH chunk | 未实现 | 尚未验证字段和 index 规则 |
+| 插件内部事件 → DSH chunk | 已实现（子项目 2，切块模拟流式） | `src/to-dsh-chunks.ts` 转换器已实现，`index` 块序号从 0 递增，每块 `block-start → text-delta* → block-end`，多 step 多 `finish` 折叠为最后一个，`usage` 在 `finish` 前且唯一 |
 | DSH chunk → UI | 未验证 | 尚未通过真实 DSH 聊天验证 |
 | 取消与进程清理 | 已验证 | 五层超时 + AbortSignal + `taskkill /PID /T` 进程树清理，单测覆盖 |
 
@@ -749,6 +749,8 @@ OpenCode reason → DSH reason
 - [ ] 每个字段都有来源；
 - [ ] 不依赖参考插件的猜测。
 
+**结论（2026-10-17）：** DSH `StreamChunk` 真实合同已从 `app.asar` API manifest 提取（`docs/research/dsh-llm-contract.md`），`index` 为块序号从 0 递增、每块 `block-start → text-delta* → block-end`、`usage` 在 `finish` 前、`finish` 唯一。
+
 ---
 
 ## TODO-16：设计 CLI 事件 → DSH chunk 转换器
@@ -788,6 +790,8 @@ OpenCode JSON event
 - [ ] 不直接依赖 child process；
 - [ ] 正常、工具、错误、取消均有样例；
 - [ ] chunk 顺序稳定。
+
+**结论（2026-10-17）：** 转换器 `src/to-dsh-chunks.ts` 已实现，多 step 多 `finish` 折叠为最后一个。
 
 ---
 

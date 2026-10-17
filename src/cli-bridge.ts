@@ -15,6 +15,9 @@ import { parseEventLine } from "./parse-lines.js";
 import { OpenCodeEventMapper } from "./map-events.js";
 import { discoverOpencodeCli } from "./discover-cli.js";
 import { runCliProcess, type RunCliOutcome } from "./run-cli.js";
+import { toDshChunks } from "./to-dsh-chunks.js";
+import type { DshChunkOptions } from "./to-dsh-chunks.js";
+import type { DshStreamChunk } from "./dsh-types.js";
 
 interface ExecuteResult {
   events: CliBridgeEvent[];
@@ -226,4 +229,15 @@ export async function runCliBridge(opts: CliBridgeOptions): Promise<CliBridgeRes
     // 建立阶段错误按 Ruling F14 直接 reject
     throw e;
   }
+}
+
+/**
+ * 端到端入口：OpenCode CLI 事件流 -> DSH StreamChunk 流。
+ * 取消/超时/失败都落成终止 finish（aborted/error），不会向外抛（建立期参数错误除外）。
+ */
+export function streamDshChunks(
+  opts: CliBridgeOptions,
+  options: DshChunkOptions = {},
+): AsyncIterable<DshStreamChunk> {
+  return toDshChunks(streamCliBridge(opts), options);
 }

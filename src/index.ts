@@ -24,3 +24,17 @@ export type { DiscoverOptions, DiscoveredCli } from "./discover-cli.js";
 export { runCliProcess } from "./run-cli.js";
 export type { RunCliOptions, RunCliOutcome, TimeoutLayer } from "./run-cli.js";
 export { streamCliBridge, runCliBridge } from "./cli-bridge.js";
+
+export { streamDshChunks } from "./cli-bridge.js";
+export { toDshChunks, DshChunkConverter, mapUsage } from "./to-dsh-chunks.js";
+export type { DshChunkOptions } from "./to-dsh-chunks.js";
+export { chunkText, DEFAULT_CHUNK_SIZE } from "./chunk-text.js";
+export type {
+  DshStreamChunk,
+  DshContentBlock,
+  DshContentBlockType,
+  DshTokenUsage,
+  DshFinishReason,
+  DshLlmFailure,
+  DshReplayEnvelope,
+} from "./dsh-types.js";
