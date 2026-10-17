@@ -118,18 +118,21 @@ export class DshChunkConverter {
 
   /** 取消收尾；幂等。 */
   abort(): DshStreamChunk[] {
-    return this.#finalize({
-      kind: "aborted",
-      failure: toFailure("CANCELLED"),
-    });
+    return this.#finalize(
+      {
+        kind: "aborted",
+        failure: toFailure("CANCELLED"),
+      },
+      true,
+    );
   }
 
-  #finalize(fallback: DshFinishReason): DshStreamChunk[] {
+  #finalize(fallback: DshFinishReason, forceFallback = false): DshStreamChunk[] {
     if (this.#ended) return [];
     this.#ended = true;
     return [
       { type: "usage", usage: this.#usage ?? mapUsage(ZERO_USAGE) },
-      { type: "finish", reason: this.#finish ?? fallback },
+      { type: "finish", reason: forceFallback ? fallback : (this.#finish ?? fallback) },
     ];
   }
 }

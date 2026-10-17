@@ -154,6 +154,15 @@ test("abort() -> usage + finish(aborted, CANCELLED)", () => {
   });
 });
 
+test("已有 finish 记录时 abort() 仍强制 aborted + CANCELLED，usage 取记录值", () => {
+  const c = new DshChunkConverter({ chunkSize: 100 });
+  c.push(finishEvent({ reason: "tool-calls", usage: { total: 100, input: 80, output: 10, reasoning: 5, cacheRead: 5, cacheWrite: 0 } }));
+  assert.deepEqual(c.abort(), [
+    { type: "usage", usage: { inputTokens: 80, outputTokens: 10, totalTokens: 100, cacheReadTokens: 5, cacheWriteTokens: 0, reasoningTokens: 5 } },
+    { type: "finish", reason: { kind: "aborted", failure: { message: "Request cancelled", code: "CANCELLED" } } },
+  ]);
+});
+
 test("toDshChunks: 异步包装产出与状态机一致，自然收尾", async () => {
   async function* source() {
     yield textEvent("hi");
