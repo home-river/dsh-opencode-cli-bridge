@@ -39,7 +39,7 @@ test("readCache: 不存在/损坏 -> null 不抛错", () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("runModelsCli: 走发现路径执行命令并解析输出", async () => {
+test("runModelsCli: 异步获取仍走发现路径并解析输出", async () => {
   const models = await runModelsCli({ command: process.execPath, args: [FAKE_MODELS] });
   assert.deepEqual(models.map((m) => m.id), ["opencode/fake-one", "opencode/fake-two"]);
 });
@@ -76,6 +76,50 @@ test("loadCatalog: 过期缓存触发 fetch，成功后写回缓存", async () =
     });
     assert.ok(models.some((m) => m.id === "fresh/one"));
     assert.equal(readCache(path).models.some((m) => m.id === "fresh/one"), true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("loadCatalog: fetch 失败 memo 生效，5 分钟窗口内不重复 fetch", async () => {
+  const dir = tmp();
+  try {
+    const path = join(dir, "models.json");
+    const stale = new Date(Date.parse("2026-10-16T00:00:00.000Z")).toISOString();
+    writeCache(path, { source: "cli", fetchedAt: stale, models: [{ id: "stale/one", name: "stale/one" }] });
+    let calls = 0;
+    const now = () => Date.parse("2026-10-17T00:00:00.000Z");
+    const options = { cachePath: path, now, fetchModels: () => { calls += 1; return null; } };
+
+    const first = await loadCatalog(options);
+    const second = await loadCatalog(options);
+    assert.equal(calls, 1, "失败后的 5 分钟窗口内应直接走陈旧缓存，不再调用 fetch");
+    assert.ok(first.some((m) => m.id === "stale/one"));
+    assert.ok(second.some((m) => m.id === "stale/one"));
+
+    const expired = await loadCatalog({ ...options, now: () => now() + 5 * 60 * 1000 + 1 });
+    assert.equal(calls, 2, "超过 5 分钟失败窗口后应允许重新 fetch");
+    assert.ok(expired.some((m) => m.id === "stale/one"));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("loadCatalog: fetch 成功 memo 生效，TTL 内不重复 fetch", async () => {
+  const dir = tmp();
+  try {
+    const path = join(dir, "models.json");
+    const stale = new Date(Date.parse("2026-10-16T00:00:00.000Z")).toISOString();
+    writeCache(path, { source: "cli", fetchedAt: stale, models: [{ id: "stale/one", name: "stale/one" }] });
+    let calls = 0;
+    const now = () => Date.parse("2026-10-17T00:00:00.000Z");
+    const options = { cachePath: path, now, fetchModels: () => { calls += 1; return [{ id: "fresh/one", name: "fresh/one" }]; } };
+
+    const first = await loadCatalog(options);
+    const second = await loadCatalog(options);
+    assert.equal(calls, 1, "成功结果在 TTL 内应命中进程内 memo");
+    assert.ok(first.some((m) => m.id === "fresh/one"));
+    assert.ok(second.some((m) => m.id === "fresh/one"));
+
+    const expired = await loadCatalog({ ...options, now: () => now() + CACHE_TTL_MS + 1 });
+    assert.equal(calls, 2, "超过成功 TTL 后应允许重新 fetch");
+    assert.ok(expired.some((m) => m.id === "fresh/one"));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
