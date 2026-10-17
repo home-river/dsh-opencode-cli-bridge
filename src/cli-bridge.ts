@@ -137,6 +137,7 @@ async function executeCall(opts: CliBridgeOptions): Promise<ExecuteResult> {
         exitCode: outcome.exitCode,
         sawAnyEvent: sawAnyLine,
         sawFinish: mapper.sawFinish,
+        sawErrorEvent: mapper.sawErrorEvent,
         stderrText: outcome.stderrText,
       });
       events.push({ ...e, code, message: `CLI call failed: ${code}` });

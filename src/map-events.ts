@@ -52,6 +52,7 @@ export class OpenCodeEventMapper {
   #usage: CliUsage = { ...ZERO_USAGE };
   #sawFinish = false;
   #sawAnyEvent = false;
+  #sawErrorEvent = false;
   #lastMessageId: string | undefined;
 
   constructor(opts: MapperOptions = {}) {
@@ -62,6 +63,7 @@ export class OpenCodeEventMapper {
   get hasText(): boolean { return this.#hasText; }
   get sawFinish(): boolean { return this.#sawFinish; }
   get sawAnyEvent(): boolean { return this.#sawAnyEvent; }
+  get sawErrorEvent(): boolean { return this.#sawErrorEvent; }
   get lastMessageId(): string | undefined { return this.#lastMessageId; }
 
   get emittedText(): string {
@@ -139,6 +141,12 @@ export class OpenCodeEventMapper {
         break;
       }
 
+      case "error": {
+        this.#sawErrorEvent = true;
+        events.push({ kind: "error", code: "UPSTREAM_ERROR", message: "upstream error" });
+        break;
+      }
+
       default: {
         diagnostics.push({ kind: "unknown-event", raw });
         break;
@@ -150,7 +158,7 @@ export class OpenCodeEventMapper {
 
   /** 进程结束时调用。若尚未产出 finish，产出一个 error 事件。 */
   finalize(): CliBridgeEvent[] {
-    if (this.#sawFinish) return [];
+    if (this.#sawFinish || this.#sawErrorEvent) return [];
     return [
       { kind: "error", code: "PROTOCOL_ERROR", message: "process exited without a step_finish event" },
     ];

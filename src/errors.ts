@@ -66,6 +66,7 @@ export interface FailureFacts {
   exitCode: number | null;
   sawAnyEvent: boolean;
   sawFinish: boolean;
+  sawErrorEvent?: boolean;
   stderrText: string;
 }
 
@@ -77,6 +78,8 @@ export function classifyFailure(facts: FailureFacts): ErrorCode {
   if (facts.timedOut) return "TIMEOUT";
 
   const stderr = stripAnsi(facts.stderrText).trim().toLowerCase();
+
+  if (facts.sawErrorEvent) return "UPSTREAM_ERROR";
 
   if (facts.exitCode !== null && facts.exitCode !== 0) {
     if (!facts.sawAnyEvent) {

@@ -59,6 +59,23 @@ test("tool_use 产出 tool 事件但不产出正文", () => {
   assert.equal(m.hasText, false);
 });
 
+test("stdout error 事件 -> UPSTREAM_ERROR，且不搬运 payload 原文", () => {
+  const m = new OpenCodeEventMapper();
+  const r = m.push({
+    type: "error",
+    sessionID: "ses_upstream",
+    error: { name: "APIError", data: { message: "sensitive upstream details", statusCode: 500 } },
+  });
+  assert.equal(r.events.length, 1);
+  assert.equal(r.events[0].kind, "error");
+  assert.equal(r.events[0].code, "UPSTREAM_ERROR");
+  assert.equal(r.events[0].message, "upstream error");
+  assert.ok(!r.events[0].message.includes("sensitive upstream details"));
+  assert.equal(r.diagnostics.length, 0);
+  assert.equal(m.sawAnyEvent, true);
+  assert.equal(m.finalize().length, 0, "error 事件已是终止事件，finalize 不再补 PROTOCOL_ERROR");
+});
+
 test("未知事件 -> unknown-event 诊断，不抛错", () => {
   const m = new OpenCodeEventMapper();
   const r = m.push({ type: "something_brand_new", part: { x: 1 } });

@@ -100,9 +100,29 @@ test("classifyFailure: exit!=0 + 无事件 + 其他 stderr -> PROTOCOL_ERROR", (
   );
 });
 
-test("classifyFailure: exit!=0 + 有事件但无 finish -> PROTOCOL_ERROR", () => {
+test("classifyFailure: 见过上游 error 事件优先于「有事件但无 finish」-> UPSTREAM_ERROR", () => {
   assert.equal(
-    classifyFailure({ aborted: false, timedOut: false, exitCode: 1, sawAnyEvent: true, sawFinish: false, stderrText: "" }),
+    classifyFailure({
+      aborted: false, timedOut: false, exitCode: 1, sawAnyEvent: true,
+      sawFinish: false, sawErrorEvent: true, stderrText: "",
+    }),
+    "UPSTREAM_ERROR",
+  );
+  assert.equal(
+    classifyFailure({
+      aborted: false, timedOut: false, exitCode: 0, sawAnyEvent: true,
+      sawFinish: false, sawErrorEvent: true, stderrText: "",
+    }),
+    "UPSTREAM_ERROR",
+  );
+});
+
+test("classifyFailure: 没见过上游 error 事件时，有事件但无 finish 仍 -> PROTOCOL_ERROR", () => {
+  assert.equal(
+    classifyFailure({
+      aborted: false, timedOut: false, exitCode: 1, sawAnyEvent: true,
+      sawFinish: false, sawErrorEvent: false, stderrText: "",
+    }),
     "PROTOCOL_ERROR",
   );
 });
