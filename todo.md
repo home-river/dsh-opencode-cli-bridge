@@ -1252,6 +1252,14 @@ opencode session delete <sessionID>
 - [ ] 每阶段都有日志或输出证据；
 - [ ] 前一阶段未通过不进入下一阶段。
 
+### 补充验证项（2026-10-17 全分支终审裁定）
+
+- [ ] 真实 `text` 事件粒度：实测确认整段还是增量；若为增量，转换器按 messageId 合并为单块（block-start 一次、多 delta、block-end 一次）；
+- [ ] DSH 取消走 `options.signal` 还是 `iterator.return()`：若为后者，`toDshChunks` 需加 finally 收尾；
+- [ ] error 事件后进程挂起至超时的分类边缘（TIMEOUT 被 UPSTREAM_ERROR 掩盖，Ruling P18，留实机后修）；
+- [ ] `runModelsCli` 的 spawn 未关 stdin（Ruling P19，一行 `stdio:["ignore","pipe","pipe"]` 顺手修）；
+- [ ] `cordis.patch.yml` 无 `config: {}` 的 insert 行能否被 loader 接受（TODO-27 顺带确认）。
+
 ---
 
 ## TODO-29：确认 DSH 中的工作区隔离
