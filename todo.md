@@ -1254,13 +1254,21 @@ opencode session delete <sessionID>
 
 ### 补充验证项（2026-10-17 全分支终审裁定）
 
-- [ ] 真实 `text` 事件粒度：实测确认整段还是增量；若为增量，转换器按 messageId 合并为单块（block-start 一次、多 delta、block-end 一次）；
+- [x] ~~真实 `text` 事件粒度：实测确认整段还是增量~~ → **实锤整段一次性**（2026-10-17 用户实测"憋一会一次性发出"+ CLI 复现一致）；无 delta 字段，切块器仅在整段到达后分发，转换器无需按 messageId 合并；
 - [ ] DSH 取消走 `options.signal` 还是 `iterator.return()`：若为后者，`toDshChunks` 需加 finally 收尾；
 - [ ] error 事件后进程挂起至超时的分类边缘（TIMEOUT 被 UPSTREAM_ERROR 掩盖，Ruling P18，留实机后修）；
 - [ ] `runModelsCli` 的 spawn 未关 stdin（Ruling P19，一行 `stdio:["ignore","pipe","pipe"]` 顺手修）；
 - [x] ~~`cordis.patch.yml` 无 `config: {}` 的 insert 行能否被 loader 接受（TODO-27 顺带确认）~~ → **实机首测通过**：插件安装成功且可正常对话，loader 接受了无 `config: {}` 的 insert 行。
 
 **实机首测记录（2026-10-17）：** 安装至 `F:\project\DSH\plugin-dev\dsh-opencode-bridge`（main @ e0e6148）后，DSH 端可正常对话——provider 注册、结构化 adapter 通过宿主校验、prompt→`opencode run`→StreamChunk→渲染全链路打通。阶段 A–C 基本冒烟通过（模型可见、可出完整回答）。TODO-30 取消与错误路径未测，TODO-29 多 workspace 隔离未测。
+
+**实机排障记录（2026-10-17，"问工作区情况 → 空气泡"）：**
+- 症状：特定提问（"当前工作区的情况"）得空气泡（无正文、无报错字样）；其他内容正常；同会话与新会话均可复现；
+- CLI 级忠实复现（同 argv、同问题、mimo-flash-free）：多 step + bash 工具 + 末尾 text(358 字) 正常；事件流灌进编译管线 → 出块完整、finish(stop) 正常 —— **映射与转换层排除**；
+- `--session` 行为实测：任何**不存在**的会话 ID（DSH 式 / opencode 式 / UUID 式）一律 `Error: Session not found`、exit=1、零 stdout → error finish → 空气泡路径成立；但回归测试证实 adapter **从未**把 DSH 的 `sessionId` 透传给 CLI（该假设被证伪，测试留作护栏 `test/unit/adapter.test.mjs`）；
+- 超时排除：firstEvent 45s / idle 300s 足够宽；
+- 已加请求级取证（`bf041d8`）：`~/.dsh-opencode-bridge/requests.log`（每请求 start/end 摘要：sessionId 有无、workspace、promptChars、durationMs、textChars、finish 终态）、`last-request.md`（最近一次完整 prompt 原文，供离线精确复现）、`diagnostics.log`（协议行/未知事件/stderr）；
+- 下一步：重载插件后重试失败提问一次 → 读三份日志定根因（候选：DSH system 提示词 + 工具诱导 → 模型空响应/纯工具响应；G10 workspace 解析异常；未知事件被丢弃）。
 
 ---
 
