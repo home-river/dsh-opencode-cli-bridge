@@ -20,7 +20,7 @@ prompt 此前作为**位置参数**放进 argv（`args.push(opts.prompt)`）。W
 - `src/run-cli.ts`：`RunCliOptions` 新增 `stdinText?: string`；spawn 的 stdio 从 `["ignore","pipe","pipe"]` 改为 `["pipe","pipe","pipe"]`，spawn 后立即 `child.stdin.end(stdinText)` 写完即关；`child.stdin` 挂 error 处理器吞掉子进程提前退出导致的 EPIPE。
 - `src/cli-bridge.ts`：`buildArgs` 不再把 prompt 推入 argv（附上限说明注释）；`executeCall` 经 `stdinText: opts.prompt` 送达。
 - **为什么走 stdin**：实测 `opencode run` 在无位置参数时从 stdin 读 message（1.19.0，回执验证正常）；管道无 32K 上限，顺带消除 argv 引号/控制字符转义风险，并天然满足"写完关 stdin"（兼修 Ruling P19 在本 spawn 的同类隐患）。
-- **验证**：新增 fixture 模式 `stdin-echo`（回显 stdin 字符数）+ 两条单测（常规 prompt `STDIN_LEN=5`、40K prompt `STDIN_LEN=40000`），修复前红（`STDIN_LEN=0` / `CLI_START_FAILED`）、修复后绿；全量 170/170 通过；真 CLI 40K prompt 复测通过。
+- **验证**：新增 fixture 模式 `stdin-echo`（回显 stdin 字符数）+ 两条单测（常规 prompt `STDIN_LEN=5`、40K prompt `STDIN_LEN=40000`），修复前红（`STDIN_LEN=0` / `CLI_START_FAILED`）、修复后绿；全量 170/170 通过；**真 CLI 端到端复测通过**：40K prompt → `finish(stop)`、回复 "OK"、13s（`opencode/mimo-v2.6-flash-free`，生产级超时）。
 
 ## 备注
 
