@@ -66,7 +66,8 @@ function buildArgs(opts: CliBridgeOptions, workspace: string): string[] {
     "--format", "json",
   ];
   if (opts.sessionId) args.push("--session", opts.sessionId);
-  args.push(opts.prompt);
+  // prompt 不进 argv：Windows 命令行上限 32,767 字符，超长 prompt 会让 spawn 直接失败
+  // （CLI_START_FAILED，实机空气泡根因之一）。正文经 stdin 送达，opencode run 无位置参数时从 stdin 读。
   return args;
 }
 
@@ -100,6 +101,7 @@ async function executeCall(opts: CliBridgeOptions): Promise<ExecuteResult> {
     command: discovered.command,
     args,
     cwd: workspace,
+    stdinText: opts.prompt,
     signal: opts.signal,
     timeouts,
     onStdoutLine: (line) => {

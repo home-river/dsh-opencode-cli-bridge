@@ -158,6 +158,17 @@ switch (MODE) {
     process.stderr.write("\u001b[91m\u001b[1mError: \u001b[0mSession not found\r\n");
     process.exit(1);
 
+  case "stdin-echo": {
+    // 回显 stdin 收到的字节数（utf8 字符数）：验证 prompt 经 stdin 送达。
+    const chunks = [];
+    for await (const c of process.stdin) chunks.push(Buffer.from(c));
+    const data = Buffer.concat(chunks).toString("utf8");
+    line(stepStart("msg_1"));
+    line(text("msg_1", `STDIN_LEN=${data.length}`));
+    line(finish("msg_1", "stop", T1));
+    break;
+  }
+
   case "long-silence":
     line(stepStart("msg_1"));
     await sleep(Number(process.env.FAKE_SILENCE_MS ?? 5000));

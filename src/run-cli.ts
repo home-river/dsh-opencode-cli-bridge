@@ -8,6 +8,8 @@ export interface RunCliOptions {
   command: string;
   args: string[];
   cwd: string;
+  /** 经 stdin 送达的请求正文（prompt）；写完立即关闭 stdin。 */
+  stdinText?: string;
   signal?: AbortSignal;
   timeouts: CliTimeouts;
   env?: Record<string, string | undefined>;
@@ -78,10 +80,19 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
       cwd: opts.cwd,
       env: opts.env as NodeJS.ProcessEnv,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (e) {
     throw new CliBridgeError("CLI_START_FAILED", `failed to spawn ${opts.command}`, e);
+  }
+
+  // prompt 经 stdin 送达（避开 Windows 32,767 字符命令行上限），写完立即关闭。
+  // 子进程提前退出时写入会 EPIPE —— 必须吞掉，不得变成未捕获异常。
+  try {
+    child.stdin?.on("error", () => { /* EPIPE：子进程已退，忽略 */ });
+    child.stdin?.end(opts.stdinText ?? "");
+  } catch {
+    /* stdin 不可用：忽略，交由后续事件/退出路径收场 */
   }
 
   const stderrChunks: string[] = [];

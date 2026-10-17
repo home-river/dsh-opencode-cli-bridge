@@ -34,6 +34,25 @@ function collect(opts) {
   })();
 }
 
+test("prompt 经 stdin 送达：常规 prompt 不占 argv（stdin-echo 回显长度）", async () => {
+  const { dir, opts } = baseOpts("stdin-echo", { prompt: "hello" });
+  try {
+    const r = await runCliBridge(opts);
+    assert.equal(r.text, "STDIN_LEN=5", "prompt 必须经 stdin 完整送达");
+    assert.equal(r.finishReason, "stop");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("prompt 经 stdin 送达：40K 超长 prompt 不触发 CLI_START_FAILED（Windows 32767 命令行上限回归）", async () => {
+  const { dir, opts } = baseOpts("stdin-echo", { prompt: "x".repeat(40_000) });
+  try {
+    const r = await runCliBridge(opts);
+    assert.equal(r.text, "STDIN_LEN=40000", "超长 prompt 必须经 stdin 送达，不得走 argv");
+    assert.equal(r.finishReason, "stop");
+    assert.equal(r.errorCode, undefined);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("normal -> start/text/finish(stop)，正文与 usage 正确", async () => {
   const { dir, opts } = baseOpts("normal");
   try {
