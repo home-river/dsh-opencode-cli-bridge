@@ -337,7 +337,7 @@ DSH chat ID → workspace + OpenCode sessionID
 - [ ] 哪些模型是真正免费的；
 - [ ] `opencode/*` 与 `opencode-go/*` 的区别；
 - [ ] 哪些模型支持图片；
-- [ ] 哪些模型支持 reasoning effort；
+- [x] 哪些模型支持 reasoning effort；
 - [ ] 上下文长度和最大输出从哪里取；
 - [ ] 目录刷新周期；
 - [ ] 目录失败时的回退顺序。
@@ -385,6 +385,8 @@ HTTP GET /zen/v1/models
 reasoning：默认不向 DSH 暴露，验证后再开
 free 判断：只展示已验证免费模型
 ```
+
+**结论（2026-10-17）：** ① 模型可见性已落地为配置化筛选：`~/.dsh-opencode-bridge/config.json` 的 `models.include/exclude`（`*` 通配），默认排除 `opencode-go/*`，显式 include 可放回，见 `src/model-filter.ts`；② reasoning 实测见 TODO-09 结论（`--variant` 对免费模型无响应、`--thinking` 才产出 `reasoning` 事件），故维持「暂不向 DSH 暴露思考强度」。
 
 **完成标准：**
 
@@ -454,7 +456,7 @@ opencode run
 - [x] `--format json` 是否始终逐行输出；
 - [x] 是否存在 stdout/stderr 混杂日志；
 - [ ] `--print-logs` 是否会污染 JSON；
-- [ ] `--variant` 是否可用于 reasoning effort；
+- [x] `--variant` 是否可用于 reasoning effort；
 - [ ] 是否有参数控制工具调用。
 
 **MVP 决策：**
@@ -473,6 +475,16 @@ opencode run
 - [x] workspace、model、session 都能验证生效。
 
 **结论（2026-10-16）：** 参数形态 `run --dir <绝对路径> --model <provider/model> --format json [--session <id>] <prompt>`，一律 argv 数组（G2，禁 `shell:true`）。`--dir` 传绝对路径：桥内先 resolve 再校验，相对且不存在 / 目录不存在 → `WORKSPACE_INVALID`（集成 R05/R06 验证）；`--session` **不自动创建**，失效即 exit 1 + stderr `Session not found`（R03）；prompt 走最后一个 argv，多行与特殊字符天然安全（fake CLI `session-echo` 模式 + 单测验证参数保真）。
+
+**结论（2026-10-17 探针）：** `opencode run --help` 与 `opencode-docs/cli.md` 均确认 `--variant` = 模型变体（provider 相关的 reasoning effort，例：high / max / minimal），`--thinking` = 显示 thinking 块。实测（`opencode/mimo-v2.6-flash-free`，同题 3 样本）：
+
+| 参数 | reasoning tokens |
+|---|---|
+| 不传 `--variant` | 48 / 45 / 48 |
+| `--variant minimal` | 44 / 44 / 45 |
+| `--variant high` | 48 / 45 / 45 |
+
+三档分布几乎重叠、同档位方差 ≈ 档位间差异 → **该免费模型不响应 `--variant`，属「能传但上游无反应」的假开关**；另测 `--variant bogus-nope-xyz` **exit=0 静默接受**，CLI 不做档位校验。`--thinking` 则是**真开关**：加上后 `--format json` 流里才出现 `reasoning` 事件（`part.type="reasoning"`，`part.text` 为思考正文），不加则一个都没有。DSH 侧通道本就存在（`LlmResolvedModelInfo.reasoning.efforts` + `GenerateOptions.reasoningEffort`），但 `opencode models` 只输出 id、**无能力元数据**，档位清单只能配置或实测。故本轮不向 DSH 暴露思考强度；若后续要接，优先接 `--thinking` → DSH `reasoning-delta`（当前 map-events 忽略 `reasoning` 事件），`--variant` 仅在某个 provider 实测有响应时才声明 efforts。
 
 ---
 

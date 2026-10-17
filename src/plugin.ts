@@ -2,7 +2,9 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { OpencodeBridgeAdapter } from "./adapter.js";
-import { loadCatalog } from "./catalog-store.js";
+import { loadCatalog as loadModelCatalog } from "./catalog-store.js";
+import { DEFAULT_CONFIG_PATH, loadModelFilterConfig, selectVisibleModels } from "./model-filter.js";
+import type { CatalogModel } from "./catalog.js";
 
 export const name = "llm-opencode-bridge";
 export const inject = ["llm"];
@@ -44,10 +46,37 @@ export function resolveWorkspace(ctx: PluginContext, sessionId?: string): string
   return process.cwd();
 }
 
+/**
+ * 组装「读配置 -> 取目录 -> 过滤」的模型供给器。
+ * 每次调用重读配置：改完 `config.json` 下次打开模型选择器即生效，无需重启；
+ * 配置不可用只记诊断并退回默认，绝不影响模型列表。
+ */
+export function createModelLister(options: {
+  configPath?: string;
+  loadCatalog?: () => Promise<readonly CatalogModel[]>;
+  onDiagnostic?: (message: string) => void;
+} = {}): () => Promise<CatalogModel[]> {
+  const configPath = options.configPath ?? DEFAULT_CONFIG_PATH;
+  const loadCatalog = options.loadCatalog ?? loadModelCatalog;
+  return async () => {
+    const loaded = loadModelFilterConfig(configPath);
+    if (loaded.error !== undefined) {
+      try {
+        options.onDiagnostic?.(`config ignored: ${loaded.error}`);
+      } catch { /* 诊断不影响主流程 */ }
+    }
+    return selectVisibleModels(await loadCatalog(), loaded.config);
+  };
+}
+
 export function apply(ctx: PluginContext): (() => void) & { replace?: (providers: string[]) => void } {
   const adapter = new OpencodeBridgeAdapter({
     resolveWorkspace: (sessionId) => resolveWorkspace(ctx, sessionId),
-    listModelEntries: () => loadCatalog(),
+    listModelEntries: createModelLister({
+      onDiagnostic: (message) => {
+        safeAppend("diagnostics.log", `${new Date().toISOString()} ${JSON.stringify({ code: "MODEL_FILTER_CONFIG", message }).slice(0, 2000)}\n`);
+      },
+    }),
     onDiagnostic: (d) => {
       safeAppend("diagnostics.log", `${new Date().toISOString()} ${JSON.stringify(d).slice(0, 2000)}\n`);
     },

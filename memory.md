@@ -699,7 +699,10 @@ MVP 阶段先关闭进程的好处：
 7. 设计 CLI 启动超时、请求超时与静默超时；
 8. 设计每轮 session 的删除或保留策略；
 9. 设计模型目录获取方式：HTTP `/models`、`opencode models` 或缓存；
-10. 完成 DSH `LlmAdapter` 合同接入。
+10. 完成 DSH `LlmAdapter` 合同接入；
+11. `opencode/*` 与 `opencode-go/*` 的区别仍未查明（当前只按前缀默认隐藏 `opencode-go/*`，见 `src/model-filter.ts`）；
+12. 运行环境对 `~/.local/share/opencode` 不可写时 `opencode run` 启动即失败，插件侧自动重定向 HOME 待落地（`issues/ISSUE-001-opencode-log-dir-not-writable.md`）；
+13. 思考强度透传（`--variant` → DSH `reasoningEffort`）待有 provider 实测响应后再接；`--thinking` → DSH `reasoning-delta` 是更优先的候选。
 
 ---
 

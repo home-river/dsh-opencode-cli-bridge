@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { OpencodeBridgeAdapter } from "../../lib/adapter.js";
+import { createModelLister } from "../../lib/plugin.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE = resolve(here, "..", "fixtures", "fake-opencode.mjs");
@@ -159,5 +160,30 @@ test("prepareCall 返回 model + stream，stream 行为一致", async () => {
       messages: MESSAGES,
     })) chunks.push(c);
     assert.deepEqual(chunks.at(-1).reason, { kind: "stop" });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("listModels 出口接模型筛选：默认隐藏 opencode-go/*，被过滤模型仍可宽松 resolve", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ocbridge-filter-"));
+  const configPath = join(dir, "config.json");
+  writeFileSync(configPath, JSON.stringify({ models: { exclude: ["opencode/gpt-5"] } }), "utf8");
+  const catalog = [
+    { id: "opencode/mimo-v2.6-flash-free", name: "MiMo" },
+    { id: "opencode/gpt-5", name: "GPT-5" },
+    { id: "opencode-go/big", name: "Go Big" },
+  ];
+  const { adapter } = makeAdapter({
+    listModelEntries: createModelLister({ configPath, loadCatalog: async () => catalog }),
+  });
+  try {
+    const models = await adapter.listModels("opencode-bridge");
+    assert.deepEqual(models.map((m) => m.id), ["opencode/mimo-v2.6-flash-free"]);
+    const hidden = await adapter.resolveModel("opencode-bridge", "opencode-go/big");
+    assert.deepEqual(hidden, {
+      provider: "opencode-bridge",
+      id: "opencode-go/big",
+      name: "opencode-go/big",
+      inputModalities: ["text"],
+    });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

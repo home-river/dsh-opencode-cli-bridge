@@ -1,5 +1,15 @@
-export { name, inject, apply, resolveWorkspace } from "./plugin.js";
+export { name, inject, apply, resolveWorkspace, createModelLister } from "./plugin.js";
 export type { PluginContext } from "./plugin.js";
+export {
+  DEFAULT_EXCLUDE,
+  DEFAULT_CONFIG_PATH,
+  matchesPattern,
+  filterModels,
+  selectVisibleModels,
+  parseModelFilterConfig,
+  loadModelFilterConfig,
+} from "./model-filter.js";
+export type { ModelFilterConfig, LoadedModelFilter } from "./model-filter.js";
 
 export type {
   CliTimeouts,
