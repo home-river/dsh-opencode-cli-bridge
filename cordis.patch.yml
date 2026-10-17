@@ -1,0 +1,4 @@
+# dsh-opencode-bridge：OpenCode CLI 模型桥（LlmAdapter 插件）
+- insert:
+    - id: llm-opencode-bridge
+      name: '@home-river/dsh-opencode-bridge'

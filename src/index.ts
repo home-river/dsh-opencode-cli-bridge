@@ -1,3 +1,6 @@
+export { name, inject, apply, resolveWorkspace } from "./plugin.js";
+export type { PluginContext } from "./plugin.js";
+
 export type {
   CliTimeouts,
   CliUsage,

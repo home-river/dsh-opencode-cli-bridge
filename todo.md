@@ -10,9 +10,9 @@
 
 | 链路段 | 状态 | 结论 |
 |---|---|---|
-| DSH → 插件 Adapter | 未验证 | 尚未接入 `LlmAdapter` |
-| 插件 → 当前聊天 workspace | 未验证 | 尚未确认如何从 DSH 会话取得工作区 |
-| 插件 → 模型目录 | 部分验证 | HTTP `/models` 可读；CLI `opencode models` 可用；⚠️ 目录与真实可用性不一致（见 TODO-06） |
+| DSH → 插件 Adapter | 部分验证（代码完成，待实机） | `src/plugin.ts` 插件入口（`name`/`inject`/`apply`）+ `OpencodeBridgeAdapter` 七方法已落地，单测全绿；注册与模型选择器待 DSH 实机验证（TODO-01/27） |
+| 插件 → 当前聊天 workspace | 部分验证（代码完成，待实机） | G10 解析顺序已实现（`ctx.get("sessions").get(id).header.cwd` → `workspaceRegistry.list()` 命中 → `process.cwd()`，单测覆盖）；实机隔离验证待 TODO-04/28 |
+| 插件 → 模型目录 | 部分验证（代码完成，待实机） | HTTP `/models` 可读；CLI `opencode models` 可用；`loadCatalog`（CLI→cache→static 三级）与 `listModels` 已实现、单测全绿；⚠️ 目录与真实可用性不一致（见 TODO-06），实机显示待 TODO-27 |
 | 插件 → OpenCode CLI 进程 | 已验证 | `opencode run --format json` 可无头执行；CliBridge 进程壳（spawn/超时/取消/清理）单测全绿 |
 | CLI → 免费模型 | 已验证 | `opencode/mimo-v2.6-flash-free` 可返回正文（2026-10-16 曾有约 1 小时故障窗口，已恢复） |
 | CLI session 续接 | 已验证 | 同一 `--session` 可跨进程保留上下文 |
@@ -114,6 +114,8 @@ ctx.llm.registerAdapter(["opencode-bridge"], adapter)
 - 注册成功但 `listModels` 未被调用；
 - 插件卸载后 adapter 仍存在。
 
+**结论（2026-10-17）：** 注册方式定为 `ctx.llm.registerAdapter(["opencode-bridge"], adapter)`，插件入口 `export const inject = ["llm"]` 拿 `ctx.llm`（`src/plugin.ts`，逐字合同见 `docs/research/dsh-llm-contract.md` §5 与 `docs/research/dsh-plugin-contract.md` §1.3/§1.4）；返回的句柄同时是 disposer，服务端包在 `ctx.effect(..., "llm.registerAdapter()")` 里随 fiber 销毁自动回收（"Disposed with the fiber"），参考插件同样只保留句柄做 `replace`、不手动调用销毁。provider ID 定为 `opencode-bridge`。是否发出 adapter 更新事件、选择器实际显示留实机验证（TODO-27）。
+
 ---
 
 ## TODO-02：确认 DSH `LlmAdapter` 的完整方法合同
@@ -151,6 +153,8 @@ ctx.llm.registerAdapter(["opencode-bridge"], adapter)
 - 用 fake stream 返回固定 chunk；
 - 观察 DSH 是否进入 UI；
 - 再替换为真实 CLI stream。
+
+**结论（2026-10-17）：** 七方法合同逐字摘录见 `docs/research/dsh-llm-contract.md` §3（`providerInfo` / `providerRetryPolicy` / `imageRequestPricing` / `listModels` / `resolveModel` / `prepareCall` / `stream`），可选项（`providerRetryPolicy`、`imageRequestPricing`）基类默认返回空。本包以结构化实现落地 `src/adapter.ts` 的 `OpencodeBridgeAdapter`（不 import `@deepseek-ai/*` 运行时包，G9），`stream` 直接返回异步生成器（`streamDshChunks`），重试判定交宿主（本 adapter `providerRetryPolicy` 返回 `undefined`）。合同与实现的对应关系见 `docs/research/dsh-plugin-contract.md` §4.3 与本仓单测 `test/unit/adapter.test.mjs`。
 
 ---
 
@@ -197,6 +201,8 @@ chat/session ID 可直接取得：
 消息格式：
   DSH message 数组
 ```
+
+**结论（2026-10-17）：** `GenerateOptions` 真实字段逐字见 `docs/research/dsh-llm-contract.md` §4：`provider` / `model` / `reasoningEffort?` / `messages` / `system?` / `tools?` / `toolHistory?` / `temperature?` / `maxTokens?` / `stop?` / `signal?` / `sessionId?` / `purpose?`——**无 workspace 字段**（A 候选被否定）；会话关联键只有可选的 `sessionId`；取消经 `signal: AbortSignal`；消息为 DSH `RequestMessage[]`（本包 `PromptMessage`，`src/prompt.ts` 压平）。附件/图片与 tool call 字段见研究件 §4 原文。
 
 ---
 
@@ -253,6 +259,8 @@ workspace 变更后如何处理：
 - [ ] 找到稳定且可测试的 workspace 获取路径；
 - [ ] 有明确的默认和错误回退；
 - [ ] 不同聊天不会共享错误目录。
+
+**结论（2026-10-17）：** workspace 途径定为 G10 三级顺序（`src/plugin.ts` 的 `resolveWorkspace`，单测 `test/unit/plugin.test.mjs` 覆盖四级用例）：① `ctx.get("sessions").get(sessionId).header.cwd` → ② `ctx.get("workspaceRegistry").list()` 中 `sessionIds` 含该会话的 `path` → ③ `process.cwd()`；全链可选链防御（无 `ctx.get` / 服务缺失 / sessionId 缺省均安全回退），`GenerateOptions` 无 workspace 字段的事实见 `docs/research/dsh-llm-contract.md` §4，registry 公开用法见 `docs/research/dsh-plugin-contract.md` §3.3 途径 A/B。候选 A（GenerateOptions 直接携带）被否定。多聊天隔离与回退正确性待实机（TODO-28）。
 
 ---
 
@@ -1153,6 +1161,8 @@ opencode session delete <sessionID>
 - [ ] `npm run build` 产生 `lib/`；
 - [ ] bundle patch 语法正确；
 - [ ] 插件可被 DSH 识别。
+
+**结论（2026-10-17）：** bundle 合同已落地——`package.json` 增加 `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`（合同原文见 `docs/research/dsh-plugin-contract.md` §2.1，`dsh.bundle.patch` 取值须为文件路径或路径列表），`cordis.patch.yml` 为附录 A 的 insert 形态（`- insert:` + `id: llm-opencode-bridge` + `name: '@home-river/dsh-opencode-bridge'`），`files` 已含 `cordis.patch.yml`、`exports` 含 `"./cordis.patch.yml"` 子路径；插件导出 `name`/`inject`/`apply` 落在 `src/plugin.ts` 并由 `src/index.ts` 顶部 re-export（宿主入口 `main`/`exports "."` 指向 `lib/index.js`，参考实现同形）；**不导出 `Config`**（Ruling P8/G7，不引 schemastery），配置走 patch 行。打包合同由 `test/unit/plugin.test.mjs` 以文件读取断言（读 `package.json` 与 `cordis.patch.yml` 原文）。构建输出 `lib/index.js` 与 typecheck 由 `npm test`（tsc 全量）验证通过；「插件可被 DSH 识别」属实机项（TODO-26/27）。client bundle 非 MVP 必需（G7，未做）。
 
 ---
 
