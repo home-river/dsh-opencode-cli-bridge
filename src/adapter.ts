@@ -20,6 +20,16 @@ export interface OpencodeBridgeDeps {
   listModelEntries: () => Promise<readonly CatalogModel[]>;
   cli?: { command?: string; extraArgs?: string[]; timeouts?: Partial<CliTimeouts> };
   onDiagnostic?: (d: CliDiagnostic) => void;
+  /** 取证钩子：请求开始时拿到完整 prompt（调试用，宿主可落盘）；不得抛异常影响主流程。 */
+  onRequestStart?: (info: { prompt: string; model: string; workspace: string; sessionId?: string }) => void;
+  /** 取证钩子：请求结束时拿到终态摘要。 */
+  onRequestEnd?: (info: {
+    model: string;
+    durationMs: number;
+    textChars: number;
+    finishKind: string;
+    finishCode?: string;
+  }) => void;
 }
 
 const ZERO_TOKEN_USAGE: DshTokenUsage = {
@@ -83,18 +93,49 @@ export class OpencodeBridgeAdapter {
 
   stream(options: AdapterGenerateOptions): AsyncIterable<DshStreamChunk> {
     const prompt = buildPrompt({ system: options.system, messages: options.messages });
-    if (prompt === "") return errorFinishStream("PROMPT_FAILED", "Empty request");
-    const workspace = this.#deps.resolveWorkspace(options.sessionId);
-    return streamDshChunks(
-      {
-        workspace,
-        model: options.model,
-        prompt,
-        signal: options.signal,
-        onDiagnostic: this.#deps.onDiagnostic,
-        ...this.#deps.cli,
-      },
-      {},
-    );
+    const empty = prompt === "";
+    const workspace = empty ? "" : this.#deps.resolveWorkspace(options.sessionId);
+    try {
+      this.#deps.onRequestStart?.({ prompt, model: options.model, workspace, sessionId: options.sessionId });
+    } catch { /* 取证钩子不得影响主流程 */ }
+    const inner: AsyncIterable<DshStreamChunk> = empty
+      ? errorFinishStream("PROMPT_FAILED", "Empty request")
+      : streamDshChunks(
+          {
+            workspace,
+            model: options.model,
+            prompt,
+            signal: options.signal,
+            onDiagnostic: this.#deps.onDiagnostic,
+            ...this.#deps.cli,
+          },
+          {},
+        );
+    return this.#wrapSummary(inner, options.model);
+  }
+
+  /** 取证：统计正文字符数与终态，请求收尾时经 onRequestEnd 回调（钩子异常不影响流）。 */
+  #wrapSummary(inner: AsyncIterable<DshStreamChunk>, model: string): AsyncIterable<DshStreamChunk> {
+    const deps = this.#deps;
+    return (async function* () {
+      const t0 = Date.now();
+      let textChars = 0;
+      let finishKind = "";
+      let finishCode: string | undefined;
+      try {
+        for await (const chunk of inner) {
+          if (chunk.type === "text-delta") textChars += chunk.text.length;
+          if (chunk.type === "finish") {
+            finishKind = chunk.reason.kind;
+            finishCode = "failure" in chunk.reason ? chunk.reason.failure?.code : undefined;
+          }
+          yield chunk;
+        }
+      } finally {
+        try {
+          deps.onRequestEnd?.({ model, durationMs: Date.now() - t0, textChars, finishKind, finishCode });
+        } catch { /* 取证钩子不得影响主流程 */ }
+      }
+    })();
   }
 }

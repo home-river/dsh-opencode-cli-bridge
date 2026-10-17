@@ -69,6 +69,71 @@ test("stream: fake CLI 走通 -> 块 + usage + finish(stop)，workspace/sessionI
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("stream: DSH 的 sessionId 只做 workspace 映射，不得透传给 CLI --session（实机 bug：Session not found）", async () => {
+  const { dir, adapter, deps } = makeAdapter({
+    cli: {
+      command: process.execPath,
+      extraArgs: [FAKE, "mode:session-echo"],
+      timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 5000, totalMs: 15000, shutdownMs: 1000 },
+    },
+  });
+  try {
+    const chunks = [];
+    for await (const c of adapter.stream({
+      provider: "opencode-bridge",
+      model: "opencode/mimo-v2.6-flash-free",
+      messages: MESSAGES,
+      sessionId: "ses_dsh_1",
+    })) chunks.push(c);
+    // G10：DSH sessionId 继续用于 workspace 解析
+    assert.equal(deps.seenSessionId, "ses_dsh_1");
+    // G11 / Ruling P8：会话持久化属子项目 4，现阶段不得把 DSH 的 sessionId
+    // 传给 `opencode run --session`（该参数要求会话已存在，否则 exit=1 零输出）
+    const text = chunks.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
+    assert.equal(text, "SESSION=null", "CLI argv 不得携带 --session");
+    assert.deepEqual(chunks.at(-1).reason, { kind: "stop" });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("stream: 取证钩子收到完整 prompt 与终态摘要；钩子抛异常不影响主流程", async () => {
+  const seen = { start: null, end: null };
+  const { dir, adapter } = makeAdapter({
+    onRequestStart: (i) => { seen.start = i; },
+    onRequestEnd: (i) => { seen.end = i; },
+  });
+  try {
+    const chunks = [];
+    for await (const c of adapter.stream({
+      provider: "opencode-bridge",
+      model: "opencode/mimo-v2.6-flash-free",
+      messages: MESSAGES,
+      sessionId: "ses_dsh_1",
+    })) chunks.push(c);
+    assert.ok(seen.start, "onRequestStart 应被调用");
+    assert.ok(seen.start.prompt.includes("hello"), "start 应携带完整 prompt");
+    assert.equal(seen.start.workspace, dir);
+    assert.equal(seen.start.sessionId, "ses_dsh_1");
+    assert.ok(seen.end, "onRequestEnd 应被调用");
+    assert.equal(seen.end.finishKind, "stop");
+    assert.ok(seen.end.textChars > 0);
+    assert.ok(seen.end.durationMs >= 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+
+  const boom = makeAdapter({
+    onRequestStart: () => { throw new Error("boom"); },
+    onRequestEnd: () => { throw new Error("boom"); },
+  });
+  try {
+    const chunks = [];
+    for await (const c of boom.adapter.stream({
+      provider: "opencode-bridge",
+      model: "opencode/mimo-v2.6-flash-free",
+      messages: MESSAGES,
+    })) chunks.push(c);
+    assert.deepEqual(chunks.at(-1).reason, { kind: "stop" });
+  } finally { rmSync(boom.dir, { recursive: true, force: true }); }
+});
+
 test("stream: 空请求 -> 直接 error finish，不 spawn", async () => {
   const { dir, adapter } = makeAdapter({ cli: { command: resolve(here, "no-such-exe") } });
   try {
