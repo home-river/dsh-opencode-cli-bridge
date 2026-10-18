@@ -23,7 +23,7 @@ export interface OpencodeBridgeDeps {
   cli?: { command?: string; extraArgs?: string[]; timeouts?: Partial<CliTimeouts> };
   onDiagnostic?: (d: CliDiagnostic) => void;
   /** 取证钩子：请求开始时拿到完整 prompt（调试用，宿主可落盘）；不得抛异常影响主流程。 */
-  onRequestStart?: (info: { prompt: string; model: string; workspace: string; sessionId?: string }) => void;
+  onRequestStart?: (info: { prompt: string; model: string; workspace: string; sessionId?: string; reasoningEffort?: string }) => void;
   /** 取证钩子：请求结束时拿到终态摘要。 */
   onRequestEnd?: (info: {
     model: string;
@@ -114,7 +114,13 @@ export class OpencodeBridgeAdapter {
     const empty = prompt === "";
     const workspace = empty ? "" : this.#deps.resolveWorkspace(options.sessionId);
     try {
-      this.#deps.onRequestStart?.({ prompt, model: options.model, workspace, sessionId: options.sessionId });
+      this.#deps.onRequestStart?.({
+        prompt,
+        model: options.model,
+        workspace,
+        sessionId: options.sessionId,
+        reasoningEffort: options.reasoningEffort,
+      });
     } catch { /* 取证钩子不得影响主流程 */ }
     const inner: AsyncIterable<DshStreamChunk> = empty
       ? errorFinishStream("PROMPT_FAILED", "Empty request")

@@ -29,16 +29,26 @@ test("apply 注册 opencode-bridge 路由并返回组合 disposer", () => {
   assert.equal(adapterDisposed, 1, "disposer 应连带注销 adapter 注册");
 });
 
-test("apply 经 connection.fetch 注册模型设置路由；disposer 注销；无 connection 时安静降级", () => {
+test("apply 经 connection.fetch 注册模型设置路由（inject 等待式）；disposer 注销；无 connection 时安静降级", () => {
   const routes = [];
   const unregistered = [];
+  const conn = {
+    fetch: { register: (route) => { routes.push(route); return () => { unregistered.push(route.path); }; } },
+  };
+  let injectedKeys = null;
   const ctx = {
     llm: { registerAdapter: () => () => {} },
-    get: (key) => (key === "connection" ? {
-      fetch: { register: (route) => { routes.push(route); return () => { unregistered.push(route.path); }; } },
-    } : undefined),
+    get: () => undefined,
+    // cordis 等待式注入：本用例模拟「connection 已就绪」立即回调；
+    // 实机上 apply 早于 connection 注册时，正是靠 inject 等到它（ctx.get 即时查询会错过）
+    inject: (keys, cb) => {
+      injectedKeys = keys;
+      cb({ get: (key) => (key === "connection" ? conn : undefined) });
+      return { dispose: () => {} };
+    },
   };
   const returned = apply(ctx);
+  assert.deepEqual(injectedKeys, ["connection"]);
   assert.deepEqual(routes.map((r) => r.path).sort(), ["/api/opencode-bridge.filter", "/api/opencode-bridge.models"]);
   for (const r of routes) {
     assert.ok(r.methods.length > 0);
@@ -48,7 +58,7 @@ test("apply 经 connection.fetch 注册模型设置路由；disposer 注销；�
   returned();
   assert.equal(unregistered.length, 2, "两条路由都应被注销");
 
-  // connection 缺失：不抛异常、apply 正常返回
+  // 无 inject 且无 connection（如纯 host 组合）：不抛异常、apply 正常返回
   const bare = apply({ llm: { registerAdapter: () => () => {} }, get: () => undefined });
   assert.equal(typeof bare, "function");
   bare();

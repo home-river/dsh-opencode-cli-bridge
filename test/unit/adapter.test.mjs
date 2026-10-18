@@ -215,11 +215,13 @@ test("stream: 取证钩子收到完整 prompt 与终态摘要；钩子抛异常�
       model: "opencode/mimo-v2.6-flash-free",
       messages: MESSAGES,
       sessionId: "ses_dsh_1",
+      reasoningEffort: "medium",
     })) chunks.push(c);
     assert.ok(seen.start, "onRequestStart 应被调用");
     assert.ok(seen.start.prompt.includes("hello"), "start 应携带完整 prompt");
     assert.equal(seen.start.workspace, dir);
     assert.equal(seen.start.sessionId, "ses_dsh_1");
+    assert.equal(seen.start.reasoningEffort, "medium", "取证应记录 reasoningEffort（实机注入判定依据）");
     assert.ok(seen.end, "onRequestEnd 应被调用");
     assert.equal(seen.end.finishKind, "stop");
     assert.ok(seen.end.textChars > 0);

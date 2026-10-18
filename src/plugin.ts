@@ -27,6 +27,14 @@ export interface PluginContext {
     registerAdapter: (providers: string[], adapter: unknown) => (() => void) & { replace?: (providers: string[]) => void };
   };
   get?: (key: string) => unknown;
+  /**
+   * cordis 等待式可选注入：目标服务就绪后回调；服务永不出现则回调不执行（安静降级）。
+   * `ctx.get` 是即时查询，会错过晚于本插件 apply 注册的服务（connection 实测如此）。
+   */
+  inject?: (
+    keys: readonly string[],
+    callback: (ctx: { get?: (key: string) => unknown }) => unknown,
+  ) => { dispose?: () => unknown } | (() => void);
 }
 
 interface SessionLike { header?: { cwd?: string } }
@@ -86,7 +94,7 @@ export function apply(ctx: PluginContext): (() => void) & { replace?: (providers
       const ts = new Date().toISOString();
       safeAppend(
         "requests.log",
-        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} promptChars=${info.prompt.length}\n`,
+        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} effort=${info.reasoningEffort ?? "-"} promptChars=${info.prompt.length}\n`,
       );
       if (info.prompt !== "") {
         try {
@@ -126,25 +134,45 @@ interface ConnectionLike {
 /**
  * 注册「模型暴露设置」的两条 host 路由（读状态 / 写过滤）到 `ctx.connection.fetch`：
  * 该注册面位于浏览器会话 cookie 鉴权栅栏内（缺 cookie 的请求 401），无需自建围栏。
- * `connection` 服务缺失或注册失败只记诊断并跳过 —— 设置 UI 不可用不影响模型桥主功能。
+ * connection 服务可能晚于本插件 apply 就绪 —— 经 `ctx.inject` 等待式注入；
+ * 服务缺失或注册失败只记诊断并跳过，设置 UI 不可用不影响模型桥主功能。
  */
 export function registerModelSettingsRoutes(ctx: PluginContext): Array<() => void> {
-  const connection = ctx.get?.("connection") as ConnectionLike | undefined;
-  const fetchApi = connection?.fetch;
-  const register = fetchApi?.register;
-  const ts = new Date().toISOString();
-  if (typeof register !== "function") {
-    safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: "connection service unavailable; settings routes disabled" })}\n`);
-    return [];
-  }
   const disposers: Array<() => void> = [];
-  for (const route of buildModelSettingsRoutes()) {
-    try {
-      const d = register.call(fetchApi, route);
-      disposers.push(typeof d === "function" ? (d as () => void) : () => {});
-    } catch (e) {
-      safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `register failed ${route.path}: ${String(e)}` }).slice(0, 2000)}\n`);
+  const ts = new Date().toISOString();
+  const registerWith = (connection: ConnectionLike | undefined): void => {
+    const fetchApi = connection?.fetch;
+    const register = fetchApi?.register;
+    if (typeof register !== "function") {
+      safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: "connection service unavailable; settings routes disabled" })}\n`);
+      return;
     }
+    for (const route of buildModelSettingsRoutes()) {
+      try {
+        const d = register.call(fetchApi, route);
+        disposers.push(typeof d === "function" ? (d as () => void) : () => {});
+      } catch (e) {
+        safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `register failed ${route.path}: ${String(e)}` }).slice(0, 2000)}\n`);
+      }
+    }
+    safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `routes registered: ${buildModelSettingsRoutes().map((r) => r.path).join(", ")}` })}\n`);
+  };
+  try {
+    if (typeof ctx.inject === "function") {
+      const seat = ctx.inject(["connection"], (injected) => {
+        registerWith(injected?.get?.("connection") as ConnectionLike | undefined);
+      });
+      disposers.push(() => {
+        try {
+          const stop = typeof seat === "function" ? seat : seat?.dispose;
+          if (typeof stop === "function") stop();
+        } catch { /* 卸载尽力而为 */ }
+      });
+    } else {
+      registerWith(ctx.get?.("connection") as ConnectionLike | undefined);
+    }
+  } catch (e) {
+    safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `inject failed: ${String(e)}` }).slice(0, 2000)}\n`);
   }
   return disposers;
 }
