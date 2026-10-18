@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { OpencodeBridgeAdapter } from "./adapter.js";
 import { loadCatalog as loadModelCatalog } from "./catalog-store.js";
 import { DEFAULT_CONFIG_PATH, loadModelFilterConfig, selectVisibleModels } from "./model-filter.js";
+import { buildModelSettingsRoutes } from "./model-settings.js";
+import type { HostFetchRoute } from "./model-settings.js";
 import type { CatalogModel } from "./catalog.js";
 
 export const name = "llm-opencode-bridge";
@@ -100,5 +102,49 @@ export function apply(ctx: PluginContext): (() => void) & { replace?: (providers
       );
     },
   });
-  return ctx.llm.registerAdapter(["opencode-bridge"], adapter);
+  const registration = ctx.llm.registerAdapter(["opencode-bridge"], adapter);
+  const routeDisposers = registerModelSettingsRoutes(ctx);
+  const dispose = (() => {
+    for (const d of routeDisposers) {
+      try {
+        d();
+      } catch { /* 卸载尽力而为 */ }
+    }
+    registration();
+  }) as (() => void) & { replace?: (providers: string[]) => void };
+  if (registration.replace !== undefined) {
+    dispose.replace = (providers) => registration.replace?.(providers);
+  }
+  return dispose;
+}
+
+/** `ctx.connection.fetch` 的结构性窄接口（G9）。 */
+interface ConnectionLike {
+  fetch?: { register?: (route: HostFetchRoute) => unknown };
+}
+
+/**
+ * 注册「模型暴露设置」的两条 host 路由（读状态 / 写过滤）到 `ctx.connection.fetch`：
+ * 该注册面位于浏览器会话 cookie 鉴权栅栏内（缺 cookie 的请求 401），无需自建围栏。
+ * `connection` 服务缺失或注册失败只记诊断并跳过 —— 设置 UI 不可用不影响模型桥主功能。
+ */
+export function registerModelSettingsRoutes(ctx: PluginContext): Array<() => void> {
+  const connection = ctx.get?.("connection") as ConnectionLike | undefined;
+  const fetchApi = connection?.fetch;
+  const register = fetchApi?.register;
+  const ts = new Date().toISOString();
+  if (typeof register !== "function") {
+    safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: "connection service unavailable; settings routes disabled" })}\n`);
+    return [];
+  }
+  const disposers: Array<() => void> = [];
+  for (const route of buildModelSettingsRoutes()) {
+    try {
+      const d = register.call(fetchApi, route);
+      disposers.push(typeof d === "function" ? (d as () => void) : () => {});
+    } catch (e) {
+      safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `register failed ${route.path}: ${String(e)}` }).slice(0, 2000)}\n`);
+    }
+  }
+  return disposers;
 }
