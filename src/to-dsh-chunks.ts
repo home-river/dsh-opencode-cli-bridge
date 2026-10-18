@@ -11,7 +11,18 @@ import type {
 
 export interface DshChunkOptions {
   chunkSize?: number;
+  /**
+   * text-delta 之间的模拟流式间隔（ms，TODO-12 方案 A 的节奏层）。
+   * OC 的 text 整段一次到达，chunk 切分后若同一瞬间全部 yield，DSH 一帧画完
+   * （「一波全部出来」）；按间隔产出才有打字机效果。0 = 关闭。
+   */
+  paceMs?: number;
 }
+
+/** 默认节奏：24 字符/块 × 22ms ≈ 每秒 ~1100 字符，长文约 1~2 秒打完。 */
+export const DEFAULT_PACE_MS = 22;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const FAILURE_MESSAGES: Record<ErrorCode, string> = {
   CLI_NOT_FOUND: "OpenCode CLI not found",
@@ -176,21 +187,33 @@ export async function* toDshChunks(
   options: DshChunkOptions = {},
 ): AsyncIterable<DshStreamChunk> {
   const converter = new DshChunkConverter(options);
+  const paceMs = options.paceMs ?? DEFAULT_PACE_MS;
+  let seenDelta = false;
+  /** 模拟流式节奏：text-delta 之间隔一个 paceMs；block/usage/finish 等即时产出。 */
+  const emit = async function* (chunks: readonly DshStreamChunk[]): AsyncIterable<DshStreamChunk> {
+    for (const chunk of chunks) {
+      if (chunk.type === "text-delta") {
+        if (paceMs > 0 && seenDelta) await sleep(paceMs);
+        seenDelta = true;
+      }
+      yield chunk;
+    }
+  };
   try {
     for await (const event of events) {
-      yield* converter.push(event);
+      yield* emit(converter.push(event));
     }
   } catch (error) {
     if (error instanceof CliBridgeAbortError) {
-      yield* converter.abort();
+      yield* emit(converter.abort());
       return;
     }
     if (error instanceof CliBridgeError) {
-      yield* converter.push({ kind: "error", code: error.code, message: error.message });
-      yield* converter.end();
+      yield* emit(converter.push({ kind: "error", code: error.code, message: error.message }));
+      yield* emit(converter.end());
       return;
     }
     throw error;
   }
-  yield* converter.end();
+  yield* emit(converter.end());
 }

@@ -637,7 +637,7 @@ text.part.text 一次给出完整正文
 - [ ] 能生成 DSH 可接受的连续 chunk；
 - [x] 不重复发送正文。
 
-**结论（2026-10-16）：** `text` 为整段一次性（实测 1 条 len=1248；R08 长回答通过），无 `delta` 字段；同一 `messageID` 多段按序拼接、不重复发（单测覆盖）；`text` 不含 reasoning；tool 事件与 text 混合出现时正文不受污染（R07）。DSH 流式体验按方案 A 由上层切块模拟，切块器独立封装。"跨 tool_use 的 index"与"DSH 连续 chunk"属 DSH 段（子项目 3）。
+**结论（2026-10-16）：** `text` 为整段一次性（实测 1 条 len=1248；R08 长回答通过），无 `delta` 字段；同一 `messageID` 多段按序拼接、不重复发（单测覆盖）；`text` 不含 reasoning；tool 事件与 text 混合出现时正文不受污染（R07）。DSH 流式体验按方案 A 由上层切块模拟，切块器独立封装（2026-10-18 补：`toDshChunks` 增 `paceMs` 节奏层，默认 22ms/块，打字机效果落地）。"跨 tool_use 的 index"与"DSH 连续 chunk"属 DSH 段（子项目 3）。
 
 ---
 
