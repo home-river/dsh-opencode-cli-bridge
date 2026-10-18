@@ -30,6 +30,16 @@ export interface DshImageAttachmentRef {
   originalDimensions?: { width: number; height: number };
 }
 
+/**
+ * 与 DSH `ImageRequestTarget` 一致（0.2.1 起 `LlmAdapter` 第八方法 `imageRequestTarget` 的返回值）。
+ * 来源：docs/research/dsh-0.2.1-upgrade-impact.md §3.1。
+ */
+export interface DshImageRequestTarget {
+  width: number;
+  height: number;
+  maxBytes: number;
+}
+
 export interface DshTextBlock {
   type: "text";
   text: string;

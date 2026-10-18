@@ -35,6 +35,49 @@ test("providerInfo / providerRetryPolicy / imageRequestPricing", () => {
   assert.equal(adapter.imageRequestPricing(), undefined);
 });
 
+test("imageRequestTarget 与基类默认实现同语义：不缩放，保留归一化原图（ISSUE-003）", () => {
+  const { adapter } = makeAdapter();
+  const ref = {
+    attachmentId: "att_1",
+    mediaType: "image/png",
+    bytes: 1234,
+    width: 800,
+    height: 600,
+    originalDimensions: { width: 1600, height: 1200 },
+  };
+  const target = adapter.imageRequestTarget("opencode-bridge", "opencode/mimo-v2.6-flash-free", ref);
+  // 基类默认实现读 image.width/height/bytes，不读 originalDimensions
+  assert.deepEqual(target, { width: 800, height: 600, maxBytes: 1234 });
+  // 运行时是同步硬调用（无 await）：返回值不得是 Promise
+  assert.equal(target.then, undefined);
+  // provider/model 参数被忽略（与基类默认实现一致）
+  assert.deepEqual(adapter.imageRequestTarget("p2", "m2", ref), target);
+  assert.doesNotThrow(() => adapter.imageRequestTarget("x", "y", {
+    attachmentId: "a", mediaType: "image/jpeg", bytes: 1, width: 1, height: 1,
+  }));
+});
+
+test("LlmAdapter 八方法合同护栏：DSH 0.2.1 起含 imageRequestTarget（ISSUE-003）", () => {
+  const { adapter } = makeAdapter();
+  for (const name of [
+    "providerInfo",
+    "providerRetryPolicy",
+    "imageRequestPricing",
+    "imageRequestTarget",
+    "listModels",
+    "resolveModel",
+    "prepareCall",
+    "stream",
+  ]) {
+    assert.equal(typeof adapter[name], "function", `missing adapter method: ${name}`);
+  }
+  // pricing 与 target 语义不同，防误合并：一个返回 undefined，一个返回对象
+  assert.equal(adapter.imageRequestPricing(), undefined);
+  assert.notEqual(adapter.imageRequestTarget("x", "y", {
+    attachmentId: "a", mediaType: "image/png", bytes: 1, width: 1, height: 1,
+  }), undefined);
+});
+
 test("listModels/resolveModel 映射目录", async () => {
   const { dir, adapter } = makeAdapter();
   try {

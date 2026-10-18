@@ -1,4 +1,4 @@
-import type { DshStreamChunk, DshTokenUsage } from "./dsh-types.js";
+import type { DshImageAttachmentRef, DshImageRequestTarget, DshStreamChunk, DshTokenUsage } from "./dsh-types.js";
 import type { CliDiagnostic, CliTimeouts } from "./types.js";
 import { buildPrompt } from "./prompt.js";
 import type { PromptMessage } from "./prompt.js";
@@ -48,7 +48,7 @@ async function* errorFinishStream(code: string, message: string): AsyncIterable<
 
 /**
  * DSH LlmAdapter 的结构化实现（不 import DSH 运行时；G2/G9）。
- * 七个方法与 @deepseek-ai/dsh-llm 的 LlmAdapter 合同同名同形。
+ * 八个方法（DSH 0.2.1 起含 `imageRequestTarget`）与 @deepseek-ai/dsh-llm 的 LlmAdapter 合同同名同形。
  */
 export class OpencodeBridgeAdapter {
   readonly #deps: OpencodeBridgeDeps;
@@ -67,6 +67,19 @@ export class OpencodeBridgeAdapter {
 
   imageRequestPricing(): undefined {
     return undefined;
+  }
+
+  /**
+   * DSH 0.2.1 起 LlmAdapter 第八方法（ISSUE-003）：返回图片的请求侧目标。
+   * 与基类默认实现同语义：本桥不缩放图片，保留归一化原图（宽/高/字节数直通）。
+   * 运行时 `LlmRuntime.imageRequestTarget` 是硬调用（无 `?.`），缺失即 TypeError。
+   */
+  imageRequestTarget(
+    _provider: string,
+    _model: string,
+    image: DshImageAttachmentRef,
+  ): DshImageRequestTarget {
+    return { width: image.width, height: image.height, maxBytes: image.bytes };
   }
 
   async listModels(provider: string): Promise<readonly ReturnType<typeof toModelInfo>[]> {
