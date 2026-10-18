@@ -72,10 +72,22 @@ test("finish 事件不立即产出，end() 产出 usage+finish(stop)", () => {
   assert.deepEqual(c.end(), [
     {
       type: "usage",
-      usage: { inputTokens: 10, outputTokens: 15, totalTokens: 30, cacheReadTokens: 2, cacheWriteTokens: 0, reasoningTokens: 3 },
+      usage: { inputTokens: 10, outputTokens: 15, totalTokens: 30, cacheReadTokens: 2, reasoningTokens: 3 },
     },
     { type: "finish", reason: { kind: "stop" } },
   ]);
+});
+
+test("mapUsage 可选字段缺省值归一：0 值不发（QA-2026-10-18 建议 #3，glm 全 0 上报场景）", () => {
+  assert.deepEqual(mapUsage({ input: 1, output: 2, total: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }), {
+    inputTokens: 1,
+    outputTokens: 2,
+  });
+  assert.deepEqual(mapUsage(ZERO_USAGE), { inputTokens: 0, outputTokens: 0 });
+  assert.deepEqual(
+    mapUsage({ input: 1, output: 2, total: 3, cacheRead: 4, cacheWrite: 5, reasoning: 6 }),
+    { inputTokens: 1, outputTokens: 2, totalTokens: 3, cacheReadTokens: 4, cacheWriteTokens: 5, reasoningTokens: 6 },
+  );
 });
 
 test("多 step 多个 finish 折叠为最后一个（reason 与 usage 都取最后）", () => {
@@ -198,7 +210,7 @@ test("已有 finish 记录时 abort() 仍强制 aborted + CANCELLED，usage 取�
   const c = new DshChunkConverter({ chunkSize: 100 });
   c.push(finishEvent({ reason: "tool-calls", usage: { total: 100, input: 80, output: 10, reasoning: 5, cacheRead: 5, cacheWrite: 0 } }));
   assert.deepEqual(c.abort(), [
-    { type: "usage", usage: { inputTokens: 80, outputTokens: 10, totalTokens: 100, cacheReadTokens: 5, cacheWriteTokens: 0, reasoningTokens: 5 } },
+    { type: "usage", usage: { inputTokens: 80, outputTokens: 10, totalTokens: 100, cacheReadTokens: 5, reasoningTokens: 5 } },
     { type: "finish", reason: { kind: "aborted", failure: { message: "Request cancelled", code: "CANCELLED" } } },
   ]);
 });

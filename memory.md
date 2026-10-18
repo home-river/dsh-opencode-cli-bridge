@@ -1,9 +1,10 @@
 # dsh-opencode-bridge 开发要点记录
 
 > 记录时间：2026-10-15  
-> 当前状态：CLI 无头调用与 CLI → 插件输入格式已验证；纯 HTTP 免费推理被上游阻断；尚未开始正式 Adapter 实现。  
+> 当前状态：~~尚未开始正式 Adapter 实现~~（已过时）——CliBridge、StreamChunk 转换、LlmAdapter 八方法合同、模型目录、OC-bridge 设置面板均完成；剩 DSH 实机联调收尾（TODO-27~30）。  
 > **2026-10-15 补充：** OpenCode CLI 的 spawn / 参数保真 / 进程树行为已实测，见 [docs/CLI-BEHAVIOR.md](./docs/CLI-BEHAVIOR.md)。该实测**修正了本文 3A 节的 4 处结论**（已在原处标注），实现时以 CLI-BEHAVIOR.md 为准。
 > **2026-10-16 第三轮：** CliBridge 模块（OC → 插件段）已实现并通过单测 103 条；真实 CLI 集成测试 R01–R08、R11 全部通过（8/8）。详见 3A.9。
+> **2026-10-18 QA 轮次（QA-2026-10-18）：** 全谱问答实测 12 例全过、15 次 CLI 调用零崩溃（ISSUE-005 本轮未复现，保持观察）：工具诱导 4/4 空气泡压制（禁用工具指令有效）、打字节奏 22.01~22.47ms/块实测生效、代码与 emoji 保真无损、多轮续接准确、mimo/deepseek-v4.1/glm-5.3 三模型行为一致。落地优化：usage 可选字段 0 值缺省归一（glm 全 0 上报场景）；工具话术监控的否定语境豁免属 QA 判分工具待办；「按模型差异化简短指令」未采纳（不擅改回答风格）。原始数据 tmp-qa-report.json（tmp-* 不入库）。
 
 ---
 

@@ -39,16 +39,21 @@ const FAILURE_MESSAGES: Record<ErrorCode, string> = {
   UNKNOWN: "Unknown error",
 };
 
-/** CliUsage -> DSH TokenUsage 的字段映射（TODO-13）。 */
+/**
+ * CliUsage -> DSH TokenUsage 的字段映射（TODO-13）。
+ * 可选字段缺省值归一（QA-2026-10-18 建议 #3）：0 视为「未上报」不发——
+ * 各模型上报形态不一致（glm-5.3 全 0），发 0 会让 DSH 显示一排无意义的零。
+ */
 export function mapUsage(usage: CliUsage): DshTokenUsage {
-  return {
+  const out: DshTokenUsage = {
     inputTokens: usage.input,
     outputTokens: usage.output,
-    totalTokens: usage.total,
-    cacheReadTokens: usage.cacheRead,
-    cacheWriteTokens: usage.cacheWrite,
-    reasoningTokens: usage.reasoning,
   };
+  if (usage.total !== 0) out.totalTokens = usage.total;
+  if (usage.cacheRead !== 0) out.cacheReadTokens = usage.cacheRead;
+  if (usage.cacheWrite !== 0) out.cacheWriteTokens = usage.cacheWrite;
+  if (usage.reasoning !== 0) out.reasoningTokens = usage.reasoning;
+  return out;
 }
 
 function toFailure(code: ErrorCode): DshLlmFailure {
