@@ -36,6 +36,9 @@ window.__ModuleLoader__.load({
         saveFailed: "保存失败",
         empty: "没有匹配的模型",
         count: "已选 {n} / {total}",
+        countFiltered: "已选 {n} · 显示 {shown} / 共 {total}",
+        dirty: "未保存更改 ×{n}",
+        reloadConfirm: "有 {n} 项未保存更改，重新加载将丢弃这些更改。确定继续？",
         groupToggle: "整组切换",
         expand: "展开",
         collapse: "折叠",
@@ -58,6 +61,9 @@ window.__ModuleLoader__.load({
         saveFailed: "Save failed",
         empty: "No matching models",
         count: "{n} / {total} selected",
+        countFiltered: "{n} selected · {shown} shown / {total} total",
+        dirty: "×{n} unsaved",
+        reloadConfirm: "You have {n} unsaved change(s); reload will discard them. Continue?",
         groupToggle: "Toggle group",
         expand: "Expand",
         collapse: "Collapse",
@@ -79,7 +85,8 @@ window.__ModuleLoader__.load({
       const style = document.createElement("style");
       style.id = "opencode-bridge-model-css";
       style.textContent = `
-.obm-wrap { display:flex; flex-direction:column; gap:14px; padding:20px 22px; height:100%; overflow:hidden; color:#fff; color-scheme:dark; font-family:inherit; background:radial-gradient(1100px 480px at 100% -10%, rgba(80,130,255,.10), transparent 60%), radial-gradient(900px 420px at -12% 112%, rgba(130,90,255,.08), transparent 55%); }
+.obm-wrap { display:flex; justify-content:center; padding:20px 22px; height:100%; overflow:hidden; color:#fff; color-scheme:dark; font-family:inherit; background:radial-gradient(1100px 480px at 100% -10%, rgba(80,130,255,.10), transparent 60%), radial-gradient(900px 420px at -12% 112%, rgba(130,90,255,.08), transparent 55%); }
+.obm-inner { display:flex; flex-direction:column; gap:14px; width:100%; max-width:880px; min-height:0; }
 .obm-head { display:flex; flex-direction:column; gap:6px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,.08); }
 .obm-title { font-size:17px; font-weight:650; letter-spacing:.01em; display:flex; align-items:center; gap:9px; }
 .obm-title::before { content:""; width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,#4d8dff,#8b5cf6); box-shadow:0 0 12px rgba(90,140,255,.85); flex:none; }
@@ -111,8 +118,9 @@ window.__ModuleLoader__.load({
 .obm-row-name { font-size:13px; color:#fff; font-weight:450; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .obm-row.off .obm-row-name { color:rgba(255,255,255,.52); font-weight:400; }
 .obm-row-sub { font-family:var(--dsw-font-mono,ui-monospace,monospace); font-size:10px; color:rgba(255,255,255,.32); margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:52%; }
-.obm-foot { display:flex; align-items:center; gap:12px; padding-top:2px; }
-.obm-status { font-size:12px; padding:4px 11px; border-radius:999px; }
+.obm-foot { display:flex; align-items:center; gap:12px; padding-top:2px; flex-wrap:wrap; }
+.obm-status { font-size:12px; padding:4px 11px; border-radius:999px; max-width:100%; overflow-wrap:anywhere; }
+.obm-status.dirty { color:#ffd88a; background:rgba(250,204,21,.12); border:1px solid rgba(250,204,21,.35); }
 .obm-status.ok { color:#7ee2a8; background:rgba(52,199,123,.12); border:1px solid rgba(52,199,123,.3); }
 .obm-status.err { color:#ff9d9d; background:rgba(255,90,90,.1); border:1px solid rgba(255,90,90,.32); }
 .obm-warn { font-size:12px; padding:9px 12px; border-radius:10px; border:1px solid rgba(250,204,21,.35); background:rgba(250,204,21,.08); color:rgba(255,255,255,.85); line-height:1.5; }
@@ -124,18 +132,40 @@ window.__ModuleLoader__.load({
 
     // ---- 数据访问 ----
     async function loadState() {
-      const res = await fetch(MODELS_URL, { method: "GET" });
-      const payload = await res.json();
+      let res;
+      try {
+        res = await fetch(MODELS_URL, { method: "GET" });
+      } catch (e) {
+        throw new Error(t("serviceDown"));
+      }
+      if (res.status === 404) throw new Error(t("serviceDown"));
+      let payload;
+      try {
+        payload = await res.json();
+      } catch (e) {
+        throw new Error(`${t("loadFailed")} (HTTP ${res.status})`);
+      }
       if (!payload.ok) throw new Error(payload.error || t("loadFailed"));
       return payload.value;
     }
     async function saveSelection(selected) {
-      const res = await fetch(FILTER_URL, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ selected }),
-      });
-      const payload = await res.json();
+      let res;
+      try {
+        res = await fetch(FILTER_URL, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ selected }),
+        });
+      } catch (e) {
+        throw new Error(t("serviceDown"));
+      }
+      if (res.status === 404) throw new Error(t("serviceDown"));
+      let payload;
+      try {
+        payload = await res.json();
+      } catch (e) {
+        throw new Error(`${t("saveFailed")} (HTTP ${res.status})`);
+      }
       if (!payload.ok) throw new Error(payload.error || t("saveFailed"));
       return payload.value;
     }
@@ -168,26 +198,44 @@ window.__ModuleLoader__.load({
       const [collapsed, setCollapsed] = React.useState(() => new Set());
       const [busy, setBusy] = React.useState(false);
       const [status, setStatus] = React.useState(null); // {kind:"ok"|"err", text}
+      const [saved, setSaved] = React.useState(() => new Set()); // 服务端可见集合基线（dirty 判定）
+      const statusTimer = React.useRef(null);
+      const clearStatus = React.useCallback(() => {
+        if (statusTimer.current) { clearTimeout(statusTimer.current); statusTimer.current = null; }
+        setStatus(null);
+      }, []);
+      const flash = React.useCallback((kind, text) => {
+        if (statusTimer.current) { clearTimeout(statusTimer.current); statusTimer.current = null; }
+        setStatus({ kind, text });
+        if (kind === "ok") statusTimer.current = setTimeout(() => setStatus(null), 2500);
+      }, []);
+      React.useEffect(() => () => { if (statusTimer.current) clearTimeout(statusTimer.current); }, []);
 
       const load = React.useCallback(async () => {
         setBusy(true);
-        setStatus(null);
+        clearStatus();
         try {
           const value = await loadState();
+          const visible = new Set(value.models.filter((m) => m.visible).map((m) => m.id));
           setState(value);
-          setChecked(new Set(value.models.filter((m) => m.visible).map((m) => m.id)));
+          setChecked(new Set(visible));
+          setSaved(new Set(visible));
         } catch (e) {
-          setStatus({ kind: "err", text: `${t("loadFailed")}: ${e && e.message ? e.message : e}` });
+          flash("err", `${t("loadFailed")}: ${e && e.message ? e.message : e}`);
         } finally {
           setBusy(false);
         }
-      }, []);
+      }, [clearStatus, flash]);
       React.useEffect(() => { void load(); }, [load]);
 
       const models = state ? state.models : [];
       const q = query.trim().toLowerCase();
       const shown = q === "" ? models : models.filter((m) => (m.id + " " + (m.name || "")).toLowerCase().includes(q));
       const groups = groupByPrefix(shown);
+      let dirtyCount = 0;
+      for (const id of checked) if (!saved.has(id)) dirtyCount++;
+      for (const id of saved) if (!checked.has(id)) dirtyCount++;
+      const dirty = dirtyCount > 0;
 
       const toggle = (id) => setChecked((prev) => {
         const next = new Set(prev);
@@ -211,20 +259,23 @@ window.__ModuleLoader__.load({
       });
       const save = async () => {
         setBusy(true);
-        setStatus(null);
+        clearStatus();
         try {
           const value = await saveSelection([...checked]);
+          const visible = new Set(value.models.filter((m) => m.visible).map((m) => m.id));
           setState(value);
-          setChecked(new Set(value.models.filter((m) => m.visible).map((m) => m.id)));
-          setStatus({ kind: "ok", text: t("saved") });
+          setChecked(new Set(visible));
+          setSaved(new Set(visible));
+          flash("ok", t("saved"));
         } catch (e) {
-          setStatus({ kind: "err", text: `${t("saveFailed")}: ${e && e.message ? e.message : e}` });
+          flash("err", `${t("saveFailed")}: ${e && e.message ? e.message : e}`);
         } finally {
           setBusy(false);
         }
       };
 
       return h("div", { className: "obm-wrap" },
+        h("div", { className: "obm-inner" },
         h("div", { className: "obm-head" },
           h("div", { className: "obm-title" }, t("title")),
           h("div", { className: "obm-sub" }, t("subtitle")),
@@ -239,8 +290,16 @@ window.__ModuleLoader__.load({
           }),
           h("button", { className: "obm-btn", onClick: () => markShown(true), disabled: busy }, t("selectAll")),
           h("button", { className: "obm-btn", onClick: () => markShown(false), disabled: busy }, t("clearAll")),
-          h("button", { className: "obm-btn", onClick: () => void load(), disabled: busy }, t("reload")),
-          h("span", { className: "obm-count" }, t("count", { n: checked.size, total: models.length })),
+          h("button", {
+            className: "obm-btn", disabled: busy,
+            onClick: () => {
+              if (dirty && !window.confirm(t("reloadConfirm", { n: dirtyCount }))) return;
+              void load();
+            },
+          }, t("reload")),
+          h("span", { className: "obm-count" }, q === ""
+            ? t("count", { n: checked.size, total: models.length })
+            : t("countFiltered", { n: checked.size, shown: shown.length, total: models.length })),
         ),
         h("div", { className: "obm-list" },
           state === null
@@ -251,7 +310,7 @@ window.__ModuleLoader__.load({
                   const total = g.rows.length;
                   const onCount = g.rows.filter((m) => checked.has(m.id)).length;
                   const allOn = total > 0 && onCount === total;
-                  const isCollapsed = collapsed.has(g.key);
+                  const isCollapsed = q === "" && collapsed.has(g.key);
                   return h("div", { key: g.key || "(no-prefix)", className: "obm-group" },
                     h("div", { className: "obm-group-head" },
                       h("input", {
@@ -285,8 +344,10 @@ window.__ModuleLoader__.load({
                 }),
         ),
         h("div", { className: "obm-foot" },
-          h("button", { className: "obm-btn obm-btn-primary", onClick: () => void save(), disabled: busy || state === null }, busy ? t("saving") : t("save")),
+          h("button", { className: "obm-btn obm-btn-primary", onClick: () => void save(), disabled: busy || state === null || !dirty }, busy ? t("saving") : t("save")),
+          dirty ? h("span", { className: "obm-status dirty" }, t("dirty", { n: dirtyCount })) : null,
           status ? h("span", { className: "obm-status " + status.kind }, status.text) : null,
+        ),
         ),
       );
     }
