@@ -85,8 +85,8 @@ window.__ModuleLoader__.load({
       const style = document.createElement("style");
       style.id = "opencode-bridge-model-css";
       style.textContent = `
-.obm-wrap { display:flex; justify-content:center; padding:20px 22px; height:100%; overflow:hidden; color:#fff; color-scheme:dark; font-family:inherit; background:radial-gradient(1100px 480px at 100% -10%, rgba(80,130,255,.10), transparent 60%), radial-gradient(900px 420px at -12% 112%, rgba(130,90,255,.08), transparent 55%); }
-.obm-inner { display:flex; flex-direction:column; gap:14px; width:100%; max-width:880px; min-height:0; }
+.obm-wrap { display:flex; justify-content:center; align-items:center; padding:20px 22px; height:100%; overflow:hidden; color:#fff; color-scheme:dark; font-family:inherit; background:radial-gradient(1100px 480px at 100% -10%, rgba(80,130,255,.10), transparent 60%), radial-gradient(900px 420px at -12% 112%, rgba(130,90,255,.08), transparent 55%); }
+.obm-inner { display:flex; flex-direction:column; gap:14px; width:100%; max-width:880px; max-height:min(720px, 100%); min-height:0; }
 .obm-head { display:flex; flex-direction:column; gap:6px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,.08); }
 .obm-title { font-size:17px; font-weight:650; letter-spacing:.01em; display:flex; align-items:center; gap:9px; }
 .obm-title::before { content:""; width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,#4d8dff,#8b5cf6); box-shadow:0 0 12px rgba(90,140,255,.85); flex:none; }
@@ -126,6 +126,12 @@ window.__ModuleLoader__.load({
 .obm-warn { font-size:12px; padding:9px 12px; border-radius:10px; border:1px solid rgba(250,204,21,.35); background:rgba(250,204,21,.08); color:rgba(255,255,255,.85); line-height:1.5; }
 .obm-empty { padding:30px 16px; text-align:center; color:rgba(255,255,255,.42); font-size:12px; border-bottom:none; cursor:default; }
 .obm-empty:hover { background:none; }
+/* ---- 宿主 UI 修补：/model、/permission 的 popupSelect 弹窗卡 ----
+   宿主把它拉满 composer 浮层宽度（.EhuiKa_card { max-width:100%; left:0; right:0 }），
+   大屏下横贯整页；这里限宽并居中。高度宿主已有 320px 锚定上限 + 内部滚动，刻意不去覆盖
+   （其 maxHeight 是动态贴靠计算的，覆盖会破坏避让）。类名哈希取自
+   dsh-client-ui-commands@0.2.0-rc.2（asar 实测）；DSH 升级更换哈希时本规则自动不命中，优雅降级。 */
+[class~="EhuiKa_card"] { max-width:min(640px, calc(100vw - 32px)) !important; margin-inline:auto !important; }
 `;
       document.head.appendChild(style);
     }
