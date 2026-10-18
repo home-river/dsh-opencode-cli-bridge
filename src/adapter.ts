@@ -2,8 +2,8 @@ import type { DshImageAttachmentRef, DshImageRequestTarget, DshStreamChunk, DshT
 import type { CliDiagnostic, CliTimeouts } from "./types.js";
 import { buildPrompt } from "./prompt.js";
 import type { PromptMessage } from "./prompt.js";
-import { toModelInfo } from "./catalog.js";
-import type { CatalogModel } from "./catalog.js";
+import { toModelInfo, modelReasoningInfo, variantForEffort } from "./catalog.js";
+import type { CatalogModel, ResolvedModelInfo } from "./catalog.js";
 import { streamDshChunks } from "./cli-bridge.js";
 
 export interface AdapterGenerateOptions {
@@ -11,6 +11,8 @@ export interface AdapterGenerateOptions {
   model: string;
   system?: string;
   messages: readonly PromptMessage[];
+  /** 思考强度（DSH GenerateOptions.reasoningEffort）；经 `--variant` 透传给 OpenCode CLI。 */
+  reasoningEffort?: string;
   signal?: AbortSignal;
   sessionId?: string;
 }
@@ -87,14 +89,17 @@ export class OpencodeBridgeAdapter {
     return entries.map((entry) => toModelInfo(provider, entry));
   }
 
-  async resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<ReturnType<typeof toModelInfo>> {
+  async resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<ResolvedModelInfo> {
     const models = await this.listModels(provider);
-    return models.find((m) => m.id === model) ?? {
+    const found = models.find((m) => m.id === model) ?? {
       provider,
       id: model,
       name: model,
-      inputModalities: ["text"],
+      inputModalities: ["text"] as const,
     };
+    // 声明 reasoning 档位（ISSUE-003 问题 2）：不声明时 DSH 0.2.1 对携带
+    // reasoningEffort 的请求在 I/O 前抛 UNSUPPORTED_REASONING_EFFORT。
+    return { ...found, reasoning: modelReasoningInfo() };
   }
 
   async prepareCall(provider: string, model: string, signal?: AbortSignal) {
@@ -118,6 +123,7 @@ export class OpencodeBridgeAdapter {
             workspace,
             model: options.model,
             prompt,
+            variant: variantForEffort(options.reasoningEffort),
             signal: options.signal,
             onDiagnostic: this.#deps.onDiagnostic,
             ...this.#deps.cli,

@@ -40,6 +40,26 @@ export interface DshImageRequestTarget {
   maxBytes: number;
 }
 
+/**
+ * 与 DSH `LlmModelReasoningEffortInfo` 一致（运行时校验逐字：id/name 非空字符串、id 不重复、description 可选）。
+ * 来源：LlmRuntime.normalizeModelInfo 的 INVALID_MODEL_REASONING 校验（0.2.x asar）。
+ */
+export interface DshLlmReasoningEffortInfo {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+/**
+ * 与 DSH `LlmModelReasoningInfo` 一致：`{ efforts; defaultEffort? }`。
+ * 运行时要求 `efforts` 非空（空数组抛 INVALID_MODEL_REASONING），
+ * `defaultEffort` 若给出必须属于 efforts。
+ */
+export interface DshLlmModelReasoningInfo {
+  efforts: readonly DshLlmReasoningEffortInfo[];
+  defaultEffort?: string;
+}
+
 export interface DshTextBlock {
   type: "text";
   text: string;

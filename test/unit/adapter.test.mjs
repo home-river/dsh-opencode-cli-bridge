@@ -92,8 +92,71 @@ test("listModels/resolveModel 映射目录", async () => {
     const resolved = await adapter.resolveModel("opencode-bridge", "opencode/mimo-v2.6-flash-free");
     assert.equal(resolved.id, "opencode/mimo-v2.6-flash-free");
     const unknown = await adapter.resolveModel("opencode-bridge", "opencode/unknown");
-    assert.deepEqual(unknown, { provider: "opencode-bridge", id: "opencode/unknown", name: "opencode/unknown", inputModalities: ["text"] });
+    assert.deepEqual(unknown, {
+      provider: "opencode-bridge",
+      id: "opencode/unknown",
+      name: "opencode/unknown",
+      inputModalities: ["text"],
+      reasoning: resolved.reasoning,
+    });
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("resolveModel/prepareCall 声明 reasoning 档位：过 DSH 0.2.1 运行时校验（ISSUE-003 问题 2）", async () => {
+  const { dir, adapter } = makeAdapter();
+  try {
+    for (const resolved of [
+      await adapter.resolveModel("opencode-bridge", "opencode/mimo-v2.6-flash-free"),
+      (await adapter.prepareCall("opencode-bridge", "opencode/mimo-v2.6-flash-free")).model,
+    ]) {
+      // 逐条对应 LlmRuntime.normalizeModelInfo 的 INVALID_MODEL_REASONING 校验：
+      // efforts 非空、id/name 非空、id 不重复、defaultEffort 若给出必须属于 efforts
+      assert.ok(resolved.reasoning.efforts.length > 0, "efforts 不得为空数组");
+      const ids = new Set();
+      for (const e of resolved.reasoning.efforts) {
+        assert.equal(typeof e.id, "string");
+        assert.ok(e.id.length > 0);
+        assert.equal(typeof e.name, "string");
+        assert.ok(e.name.length > 0);
+        assert.ok(!ids.has(e.id), `duplicate effort id: ${e.id}`);
+        ids.add(e.id);
+      }
+      if (resolved.reasoning.defaultEffort !== undefined) {
+        assert.ok(ids.has(resolved.reasoning.defaultEffort), "defaultEffort 必须属于 efforts");
+      }
+    }
+    // 请求不带 effort 时不注入默认值（不设 defaultEffort）
+    const resolved = await adapter.resolveModel("opencode-bridge", "opencode/mimo-v2.6-flash-free");
+    assert.equal(resolved.reasoning.defaultEffort, undefined);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("reasoningEffort -> opencode run --variant 透传；off/缺省不传（ISSUE-003 问题 2）", async () => {
+  const mk = (over) => makeAdapter({
+    cli: {
+      command: process.execPath,
+      extraArgs: [FAKE, "mode:variant-echo"],
+      timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 5000, totalMs: 15000, shutdownMs: 1000 },
+    },
+    ...over,
+  });
+  const run = async (reasoningEffort) => {
+    const { dir, adapter } = mk();
+    try {
+      const chunks = [];
+      for await (const c of adapter.stream({
+        provider: "opencode-bridge",
+        model: "opencode/mimo-v2.6-flash-free",
+        messages: MESSAGES,
+        reasoningEffort,
+      })) chunks.push(c);
+      return chunks.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  };
+  assert.equal(await run("high"), "VARIANT=high");
+  assert.equal(await run("medium"), "VARIANT=medium");
+  assert.equal(await run("off"), "VARIANT=null");
+  assert.equal(await run(undefined), "VARIANT=null");
 });
 
 test("stream: fake CLI 走通 -> 块 + usage + finish(stop)，workspace/sessionId 接线", async () => {
@@ -222,11 +285,17 @@ test("listModels 出口接模型筛选：默认隐藏 opencode-go/*，被过滤�
     const models = await adapter.listModels("opencode-bridge");
     assert.deepEqual(models.map((m) => m.id), ["opencode/mimo-v2.6-flash-free"]);
     const hidden = await adapter.resolveModel("opencode-bridge", "opencode-go/big");
-    assert.deepEqual(hidden, {
+    assert.deepEqual({
+      provider: hidden.provider,
+      id: hidden.id,
+      name: hidden.name,
+      inputModalities: hidden.inputModalities,
+    }, {
       provider: "opencode-bridge",
       id: "opencode-go/big",
       name: "opencode-go/big",
       inputModalities: ["text"],
     });
+    assert.ok(hidden.reasoning.efforts.length > 0, "被过滤模型的宽松 resolve 也声明 reasoning 档位");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

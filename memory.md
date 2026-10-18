@@ -702,7 +702,7 @@ MVP 阶段先关闭进程的好处：
 10. 完成 DSH `LlmAdapter` 合同接入；
 11. `opencode/*` 与 `opencode-go/*` 的区别仍未查明（当前只按前缀默认隐藏 `opencode-go/*`，见 `src/model-filter.ts`）；
 12. 运行环境对 `~/.local/share/opencode` 不可写时 `opencode run` 启动即失败，插件侧自动重定向 HOME 待落地（`issues/ISSUE-001-opencode-log-dir-not-writable.md`）；
-13. 思考强度透传（`--variant` → DSH `reasoningEffort`）待有 provider 实测响应后再接；`--thinking` → DSH `reasoning-delta` 是更优先的候选。
+13. 思考强度透传：~~待有 provider 实测响应后再接~~ **（2026-10-18 修订，ISSUE-003）** 已接 `reasoningEffort` → `opencode run --variant` 透传并声明 `reasoning.efforts`（off/minimal/low/medium/high/max，不设 defaultEffort）——修订原因：DSH 0.2.1 对「未声明 reasoning 的模型 + 携带 effort 的请求」在 I/O 前抛 `UNSUPPORTED_REASONING_EFFORT`，不声明的代价从「无」变成「路由硬失败」，且 waterfall 抹除拦不住 prepareCall/resolveCallConfig 主路径。诚实边界保留：`--variant` 对 mimo 免费模型实测不响应，档位语义是「接受并转发」而非「保证生效」；`--thinking` → DSH `reasoning-delta` 仍是更优先的后续候选。
 
 ---
 

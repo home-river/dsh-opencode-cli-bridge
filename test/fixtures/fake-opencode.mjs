@@ -154,6 +154,15 @@ switch (MODE) {
     break;
   }
 
+  case "variant-echo": {
+    const i = args.indexOf("--variant");
+    const seen = i >= 0 ? args[i + 1] : null;
+    line(stepStart("msg_1"));
+    line(text("msg_1", `VARIANT=${seen}`));
+    line(finish("msg_1", "stop", T1));
+    break;
+  }
+
   case "session-not-found":
     process.stderr.write("\u001b[91m\u001b[1mError: \u001b[0mSession not found\r\n");
     process.exit(1);

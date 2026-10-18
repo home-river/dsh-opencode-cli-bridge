@@ -382,7 +382,7 @@ HTTP GET /zen/v1/models
 
 ```text
 图片：默认只允许 text，验证后再开
-reasoning：默认不向 DSH 暴露，验证后再开
+reasoning：默认不向 DSH 暴露，验证后再开（2026-10-18 修订：为过 DSH 0.2.1 校验已声明 efforts + `--variant` 透传，见 TODO-09 结论与 ISSUE-003）
 free 判断：只展示已验证免费模型
 ```
 
@@ -485,6 +485,8 @@ opencode run
 | `--variant high` | 48 / 45 / 45 |
 
 三档分布几乎重叠、同档位方差 ≈ 档位间差异 → **该免费模型不响应 `--variant`，属「能传但上游无反应」的假开关**；另测 `--variant bogus-nope-xyz` **exit=0 静默接受**，CLI 不做档位校验。`--thinking` 则是**真开关**：加上后 `--format json` 流里才出现 `reasoning` 事件（`part.type="reasoning"`，`part.text` 为思考正文），不加则一个都没有。DSH 侧通道本就存在（`LlmResolvedModelInfo.reasoning.efforts` + `GenerateOptions.reasoningEffort`），但 `opencode models` 只输出 id、**无能力元数据**，档位清单只能配置或实测。故本轮不向 DSH 暴露思考强度；若后续要接，优先接 `--thinking` → DSH `reasoning-delta`（当前 map-events 忽略 `reasoning` 事件），`--variant` 仅在某个 provider 实测有响应时才声明 efforts。
+
+**结论（2026-10-18 修订，ISSUE-003）：** 上述「不声明 efforts」决策被 DSH 0.2.1 的 `UNSUPPORTED_REASONING_EFFORT` 硬校验推翻——不声明时携带 `reasoningEffort` 的请求在 provider I/O 前被拒，且 `llm/stream` waterfall 拦不住主路径（agent loop 走 `ctx.llm.prepareCall()`，校验先于 waterfall；UI 模型选择/headless/ACP 走 `resolveCallConfig` 直接校验）。经主理人确认改为：**声明 `reasoning.efforts`（off/minimal/low/medium/high/max）+ `reasoningEffort` 经 `--variant` 透传**（`off`/缺省不传）。诚实边界不变：CLI 对任意档位静默接受、模型是否响应待实测（mimo-v2.6-flash-free 实测不响应）；「接受并转发」≠「保证生效」。`--thinking` → `reasoning-delta` 仍是后续优先项。详见 `issues/ISSUE-003-dsh-021-contract-drift.md`。
 
 ---
 

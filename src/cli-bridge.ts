@@ -66,6 +66,9 @@ function buildArgs(opts: CliBridgeOptions, workspace: string): string[] {
     "--format", "json",
   ];
   if (opts.sessionId) args.push("--session", opts.sessionId);
+  // 思考强度透传（ISSUE-003 问题 2）：DSH reasoningEffort → `opencode run --variant`。
+  // CLI 对任意档位静默接受、不做校验（2026-10-17 实测），模型是否响应因 provider 而异。
+  if (opts.variant) args.push("--variant", opts.variant);
   // prompt 不进 argv：Windows 命令行上限 32,767 字符，超长 prompt 会让 spawn 直接失败
   // （CLI_START_FAILED，实机空气泡根因之一）。正文经 stdin 送达，opencode run 无位置参数时从 stdin 读。
   return args;
