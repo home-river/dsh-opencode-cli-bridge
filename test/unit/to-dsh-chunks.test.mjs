@@ -96,8 +96,48 @@ test("finish(max-tokens) / finish(tool-calls) 映射", () => {
   a.push(finishEvent({ reason: "max-tokens" }));
   assert.deepEqual(a.end()[1].reason, { kind: "max-tokens" });
   const b = new DshChunkConverter();
+  b.push(textEvent("done"));
   b.push(finishEvent({ reason: "tool-calls" }));
   assert.deepEqual(b.end()[1].reason, { kind: "tool-calls" });
+});
+
+test("空气泡兜底：零正文工具轮 -> 合成说明正文 + 正常 stop 收尾（ISSUE-001）", () => {
+  const c = new DshChunkConverter({ chunkSize: 1000 });
+  c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } });
+  c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c2" } });
+  c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "read", callID: "c3" } });
+  c.push(finishEvent({ reason: "tool-calls" }));
+  const out = c.end();
+  assert.equal(out[0].type, "block-start");
+  assert.equal(out[0].blockType, "text");
+  const body = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
+  assert.ok(body.includes("工具调用"), body);
+  assert.equal((body.match(/bash/g) ?? []).length, 1, "工具名应去重");
+  assert.ok(body.includes("read"));
+  assert.equal(out.at(-2).type, "usage");
+  assert.deepEqual(out.at(-1).reason, { kind: "stop" }, "无 tool-call 块时不得收尾于 tool-calls");
+});
+
+test("空气泡兜底：无工具事件的纯 tool-calls 收尾也兜底（名字留空）", () => {
+  const c = new DshChunkConverter();
+  c.push(finishEvent({ reason: "tool-calls" }));
+  const out = c.end();
+  assert.deepEqual(out.at(-1).reason, { kind: "stop" });
+  const body = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
+  assert.ok(body.includes("工具调用"));
+});
+
+test("空气泡兜底不误伤：有正文的工具轮照常透传", () => {
+  const c = new DshChunkConverter();
+  const out = [
+    ...c.push(textEvent("这是正文")),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "read" } }),
+    ...c.push(finishEvent({ reason: "tool-calls" })),
+    ...c.end(),
+  ];
+  const texts = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
+  assert.equal(texts, "这是正文", "有正文时不合成说明");
+  assert.deepEqual(out.at(-1).reason, { kind: "tool-calls" });
 });
 
 test("finish(error, EMPTY_RESPONSE) -> error + 静态文案", () => {

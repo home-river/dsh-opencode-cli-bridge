@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPrompt } from "../../lib/prompt.js";
+import { buildPrompt, TEXT_ONLY_NOTICE } from "../../lib/prompt.js";
 
 test("单条 user 消息 -> User 段", () => {
   assert.equal(
@@ -54,4 +54,13 @@ test("无文本的消息整段跳过", () => {
 
 test("空串 system 不产生段；文本不改写", () => {
   assert.equal(buildPrompt({ system: "", messages: [{ role: "user", content: [{ type: "text", text: "  x  " }] }] }), "User:\n  x  ");
+});
+
+test("textOnly：末尾追加禁用工具指令，正文不改写（ISSUE-001 空气泡根因抑制）", () => {
+  const messages = [{ role: "user", content: [{ type: "text", text: "看一下工作区" }] }];
+  const out = buildPrompt({ messages, textOnly: true });
+  assert.ok(out.includes("User:\n看一下工作区"), "原文不改写");
+  assert.ok(out.endsWith(TEXT_ONLY_NOTICE), "指令应位于 prompt 最末");
+  assert.ok(out.includes("禁止发起任何工具调用"));
+  assert.ok(!buildPrompt({ messages }).includes(TEXT_ONLY_NOTICE), "缺省不追加");
 });

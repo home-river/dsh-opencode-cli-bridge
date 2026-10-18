@@ -70,6 +70,8 @@ export class DshChunkConverter {
   #usage: DshTokenUsage | null = null;
   #finish: DshFinishReason | null = null;
   #ended = false;
+  #sawText = false;
+  #toolNames: string[] = [];
 
   constructor(options: DshChunkOptions = {}) {
     const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -83,10 +85,18 @@ export class DshChunkConverter {
     if (this.#ended) return [];
     switch (event.kind) {
       case "start":
-      case "tool":
         return [];
+      case "tool": {
+        // 工具事件不转发（桥是纯文本通道），只记名字供兜底说明（ISSUE-001）。
+        const tool = (event.raw as { tool?: unknown } | undefined)?.tool;
+        if (typeof tool === "string" && tool !== "" && !this.#toolNames.includes(tool)) {
+          this.#toolNames.push(tool);
+        }
+        return [];
+      }
       case "text": {
         if (event.text === "") return [];
+        this.#sawText = true;
         const index = this.#index++;
         const chunks: DshStreamChunk[] = [
           { type: "block-start", index, blockType: "text" },
@@ -130,10 +140,29 @@ export class DshChunkConverter {
   #finalize(fallback: DshFinishReason, forceFallback = false): DshStreamChunk[] {
     if (this.#ended) return [];
     this.#ended = true;
-    return [
+    const out: DshStreamChunk[] = [];
+    // 空气泡兜底（ISSUE-001 实锤根因：纯工具轮零正文）：
+    // 模型只做了工具调用、没有任何正文时，合成一段透明说明，避免 DSH 渲染空气泡；
+    // finish(tool-calls) 但无 tool-call 块会让 DSH 悬在工具语义上，一并改为正常 stop 收尾。
+    // 取消（forceFallback）路径不合成：aborted 是明确终态，注入正文反而误导。
+    if (!forceFallback && !this.#sawText && this.#finish?.kind === "tool-calls") {
+      const names = this.#toolNames.slice(0, 3).join(", ");
+      const notice =
+        `[OC-bridge] 本轮模型只进行了工具调用${names ? `（${names}）` : ""}，` +
+        `当前桥接版本不支持工具调用转发，因此没有正文输出。请直接用文字提问，或换个问法。`;
+      const index = this.#index++;
+      out.push({ type: "block-start", index, blockType: "text" });
+      for (const piece of chunkText(notice, this.#chunkSize)) {
+        out.push({ type: "text-delta", index, text: piece });
+      }
+      out.push({ type: "block-end", index, block: { type: "text", text: notice } });
+      this.#finish = { kind: "stop" };
+    }
+    out.push(
       { type: "usage", usage: this.#usage ?? mapUsage(ZERO_USAGE) },
       { type: "finish", reason: forceFallback ? fallback : (this.#finish ?? fallback) },
-    ];
+    );
+    return out;
   }
 }
 

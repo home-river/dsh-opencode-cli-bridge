@@ -31,7 +31,13 @@ const MESSAGES = [{ role: "user", content: [{ type: "text", text: "hello" }] }];
 test("providerInfo / providerRetryPolicy / imageRequestPricing", () => {
   const { adapter } = makeAdapter();
   assert.deepEqual(adapter.providerInfo("opencode-bridge"), { id: "opencode-bridge", name: "OpenCode Bridge" });
-  assert.equal(adapter.providerRetryPolicy(), undefined);
+  // 重试收紧（ISSUE-006）：CLI 级失败重试代价高，最多 1 次（DSH 默认 5 次）
+  assert.deepEqual(adapter.providerRetryPolicy(), {
+    mode: "normal",
+    maxRetries: 1,
+    retryableCodes: ["RATE_LIMIT", "SERVER", "TIMEOUT", "TRANSPORT"],
+    backoff: { initialDelayMs: 1000, maxDelayMs: 3000, jitterRatio: 0.2 },
+  });
   assert.equal(adapter.imageRequestPricing(), undefined);
 });
 

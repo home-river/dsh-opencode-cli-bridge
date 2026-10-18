@@ -1,4 +1,4 @@
-import type { DshImageAttachmentRef, DshImageRequestTarget, DshStreamChunk, DshTokenUsage } from "./dsh-types.js";
+import type { DshImageAttachmentRef, DshImageRequestTarget, DshResolvedRetryPolicy, DshStreamChunk, DshTokenUsage } from "./dsh-types.js";
 import type { CliDiagnostic, CliTimeouts } from "./types.js";
 import { buildPrompt } from "./prompt.js";
 import type { PromptMessage } from "./prompt.js";
@@ -63,8 +63,18 @@ export class OpencodeBridgeAdapter {
     return { id: provider, name: "OpenCode Bridge" };
   }
 
-  providerRetryPolicy(): undefined {
-    return undefined;
+  /**
+   * 收紧 DSH 侧重试：CLI 进程级失败（超时/崩溃）重试代价极高（每次 30s+ 等待），
+   * 且重试链会把多次失败信息混排进 UI。按 TODO-21「每轮最多一次内部重试」取
+   * maxRetries: 1（DSH 默认策略允许 5 次，见 ISSUE-006）。
+   */
+  providerRetryPolicy(): DshResolvedRetryPolicy {
+    return {
+      mode: "normal",
+      maxRetries: 1,
+      retryableCodes: ["RATE_LIMIT", "SERVER", "TIMEOUT", "TRANSPORT"],
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 3_000, jitterRatio: 0.2 },
+    };
   }
 
   imageRequestPricing(): undefined {
@@ -110,7 +120,7 @@ export class OpencodeBridgeAdapter {
   }
 
   stream(options: AdapterGenerateOptions): AsyncIterable<DshStreamChunk> {
-    const prompt = buildPrompt({ system: options.system, messages: options.messages });
+    const prompt = buildPrompt({ system: options.system, messages: options.messages, textOnly: true });
     const empty = prompt === "";
     const workspace = empty ? "" : this.#deps.resolveWorkspace(options.sessionId);
     try {

@@ -60,6 +60,22 @@ export interface DshLlmModelReasoningInfo {
   defaultEffort?: string;
 }
 
+/**
+ * 与 DSH `ResolvedRetryPolicy` 的解析输出形状一致
+ * （`{ mode; maxRetries?; retryableCodes?; backoff:{ initialDelayMs; maxDelayMs; jitterRatio } }`，
+ * 来源：LlmRuntime 的 resolveRetryPolicy，0.2.x asar）。
+ */
+export interface DshResolvedRetryPolicy {
+  mode: "normal" | "always";
+  maxRetries?: number;
+  retryableCodes?: readonly string[];
+  backoff: {
+    initialDelayMs: number;
+    maxDelayMs: number;
+    jitterRatio: number;
+  };
+}
+
 export interface DshTextBlock {
   type: "text";
   text: string;
