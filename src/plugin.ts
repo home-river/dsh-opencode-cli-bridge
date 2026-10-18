@@ -11,6 +11,13 @@ import type { CatalogModel } from "./catalog.js";
 export const name = "llm-opencode-bridge";
 export const inject = ["llm"];
 
+/**
+ * host 侧构建指纹：apply 时写入 diagnostics.log。
+ * 实机排查「修复没生效」时用它确认加载的是哪版模块（HMR live 重载可能只换
+ * fiber 不换 ESM 模块实例，见 ISSUE-001 复验记录）。
+ */
+export const BRIDGE_BUILD = "0.1.0-2026-10-18.2";
+
 const LOG_DIR = join(homedir(), ".dsh-opencode-bridge");
 
 /** 取证日志：一切异常吞掉，绝不影响请求主流程。 */
@@ -80,6 +87,7 @@ export function createModelLister(options: {
 }
 
 export function apply(ctx: PluginContext): (() => void) & { replace?: (providers: string[]) => void } {
+  safeAppend("diagnostics.log", `${new Date().toISOString()} ${JSON.stringify({ code: "BRIDGE_LOADED", build: BRIDGE_BUILD })}\n`);
   const adapter = new OpencodeBridgeAdapter({
     resolveWorkspace: (sessionId) => resolveWorkspace(ctx, sessionId),
     listModelEntries: createModelLister({
@@ -94,7 +102,7 @@ export function apply(ctx: PluginContext): (() => void) & { replace?: (providers
       const ts = new Date().toISOString();
       safeAppend(
         "requests.log",
-        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} effort=${info.reasoningEffort ?? "-"} promptChars=${info.prompt.length}\n`,
+        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} effort=${info.reasoningEffort ?? "-"} notice=${info.prompt.includes("(bridge constraint)") ? 1 : 0} promptChars=${info.prompt.length}\n`,
       );
       if (info.prompt !== "") {
         try {
