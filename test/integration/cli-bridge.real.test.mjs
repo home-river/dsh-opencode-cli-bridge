@@ -17,6 +17,21 @@ function mkws() {
   return d;
 }
 
+// ISSUE-004：CLI 进程树刚退出的瞬间 rmSync 会 EPERM（残留句柄/CWD 竞态，
+// 本机 5/5 复现、事后立即可删），属环境瞬态而非功能失败 —— 重试退避后再放弃，
+// 不把清理竞态误报成用例失败。
+async function cleanup(dir) {
+  for (let i = 0; ; i++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (e) {
+      if (i >= 10) throw e;
+      await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    }
+  }
+}
+
 const SLOW = { startupMs: 30_000, firstEventMs: 45_000, idleMs: 300_000, totalMs: 600_000, shutdownMs: 3_000 };
 
 RUN("R01 正常一轮：文本非空、finishReason=stop", async () => {
@@ -27,7 +42,7 @@ RUN("R01 正常一轮：文本非空、finishReason=stop", async () => {
     assert.equal(r.finishReason, "stop");
     assert.ok(r.sessionId.length > 0);
     assert.ok(r.durationMs > 0);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { await cleanup(dir); }
 });
 
 RUN("R02 续接：第二轮记得第一轮内容", async () => {
@@ -36,7 +51,7 @@ RUN("R02 续接：第二轮记得第一轮内容", async () => {
     const a = await runCliBridge({ workspace: dir, model: MODEL, prompt: "请只记住这个秘密数字 7391，只回复已记住", timeouts: SLOW });
     const b = await runCliBridge({ workspace: dir, model: MODEL, prompt: "我让你记住的数字是多少？只返回数字", sessionId: a.sessionId, timeouts: SLOW });
     assert.ok(b.text.includes("7391"), b.text);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { await cleanup(dir); }
 });
 
 // 计划原文写的是 assert.rejects，但与 spec I4 / Ruling F14 冲突：
@@ -49,7 +64,7 @@ RUN("R03 无效 --session -> resolve finishReason=error, errorCode=SESSION_INVAL
     const r = await runCliBridge({ workspace: dir, model: MODEL, prompt: "hi", sessionId: "ses_probe_does_not_exist_00000", timeouts: SLOW });
     assert.equal(r.finishReason, "error");
     assert.equal(r.errorCode, "SESSION_INVALID");
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { await cleanup(dir); }
 });
 
 RUN("R05 workspace 相对路径 -> WORKSPACE_INVALID", async () => {
@@ -77,7 +92,7 @@ RUN("R07 触发 tool_use：tool 事件被产出但不污染正文", async () => 
     const body = texts.map((e) => e.text).join("");
     assert.ok(!body.includes("callID"), "工具字段不得进入正文");
     assert.ok(tools.length >= 0);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { await cleanup(dir); }
 });
 
 RUN("R08 长回答：text 为整段，usage 非零", async () => {
@@ -87,7 +102,7 @@ RUN("R08 长回答：text 为整段，usage 非零", async () => {
     assert.ok(r.text.length > 100, `text length=${r.text.length}`);
     assert.equal(r.finishReason, "stop");
     assert.ok(r.usage.output > 0, JSON.stringify(r.usage));
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { await cleanup(dir); }
 });
 
 // 计划原文按"全机 PID 基线"断言，实测会误报无关进程（与 9b44c6e 修正单测同因）。
@@ -109,7 +124,7 @@ RUN("R11 连续 5 轮进程归零（按 CLI 进程树映像名断言）", async 
   for (let i = 0; i < 5; i++) {
     const dir = mkws();
     try { await runCliBridge({ workspace: dir, model: MODEL, prompt: "请只返回 OK", timeouts: SLOW }); }
-    finally { rmSync(dir, { recursive: true, force: true }); }
+    finally { await cleanup(dir); }
   }
   let residual = [];
   for (const wait of [800, 2000]) {
