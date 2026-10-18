@@ -36,6 +36,9 @@ window.__ModuleLoader__.load({
         saveFailed: "保存失败",
         empty: "没有匹配的模型",
         count: "已选 {n} / {total}",
+        groupToggle: "整组切换",
+        expand: "展开",
+        collapse: "折叠",
         configError: "配置文件异常（已按默认过滤）：{msg}",
         serviceDown: "设置服务不可用：host 侧 connection 路由未注册",
       },
@@ -55,6 +58,9 @@ window.__ModuleLoader__.load({
         saveFailed: "Save failed",
         empty: "No matching models",
         count: "{n} / {total} selected",
+        groupToggle: "Toggle group",
+        expand: "Expand",
+        collapse: "Collapse",
         configError: "Config file unhealthy (defaults applied): {msg}",
         serviceDown: "Settings service unavailable: host connection routes not registered",
       },
@@ -95,6 +101,11 @@ window.__ModuleLoader__.load({
 .obm-status.err { color:var(--dsw-alias-state-error-primary,#c0392b); opacity:1; }
 .obm-status.ok { color:var(--dsw-alias-state-success-primary,#1e8e3e); opacity:1; }
 .obm-warn { font-size:12px; padding:8px 10px; border-radius:6px; border:1px solid var(--dsw-alias-state-warning-primary,#c98a12); opacity:.9; }
+.obm-group-head { display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--dsw-alias-bg-hover,#8881); position:sticky; top:0; z-index:1; cursor:default; }
+.obm-group-title { font-family:var(--dsw-font-mono,monospace); font-size:11px; font-weight:600; letter-spacing:.02em; cursor:pointer; user-select:none; }
+.obm-group-count { font-size:11px; opacity:.6; }
+.obm-chevron { margin-left:auto; border:none; background:none; color:inherit; cursor:pointer; font-size:11px; opacity:.7; padding:2px 6px; }
+.obm-row-sub { font-family:var(--dsw-font-mono,monospace); font-size:10px; opacity:.45; margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:55%; }
 `;
       document.head.appendChild(style);
     }
@@ -117,11 +128,32 @@ window.__ModuleLoader__.load({
       return payload.value;
     }
 
+    // ---- 分组与行标签 ----
+    /** 按 id 的第一个 `/` 前缀分组（opencode/*、opencode-go/*…），保持目录顺序。 */
+    function groupByPrefix(models) {
+      const order = [];
+      const byKey = new Map();
+      for (const m of models) {
+        const slash = m.id.indexOf("/");
+        const key = slash > 0 ? m.id.slice(0, slash) : "";
+        if (!byKey.has(key)) { byKey.set(key, []); order.push(key); }
+        byKey.get(key).push(m);
+      }
+      return order.map((key) => ({ key, label: key === "" ? "(no prefix)" : `${key}/*`, rows: byKey.get(key) }));
+    }
+    /** 目录里 name 通常就是 id：主标签用去前缀短名，完整 id 作次级弱化显示，避免一屏重复长串。 */
+    function rowLabel(m) {
+      const slash = m.id.indexOf("/");
+      if (m.name && m.name !== m.id) return { primary: m.name, secondary: m.id };
+      return { primary: slash > 0 ? m.id.slice(slash + 1) : m.id, secondary: m.id };
+    }
+
     // ---- 面板组件 ----
     function ModelExposurePanel() {
       const [state, setState] = React.useState(null);
       const [checked, setChecked] = React.useState(() => new Set());
       const [query, setQuery] = React.useState("");
+      const [collapsed, setCollapsed] = React.useState(() => new Set());
       const [busy, setBusy] = React.useState(false);
       const [status, setStatus] = React.useState(null); // {kind:"ok"|"err", text}
 
@@ -143,6 +175,7 @@ window.__ModuleLoader__.load({
       const models = state ? state.models : [];
       const q = query.trim().toLowerCase();
       const shown = q === "" ? models : models.filter((m) => (m.id + " " + (m.name || "")).toLowerCase().includes(q));
+      const groups = groupByPrefix(shown);
 
       const toggle = (id) => setChecked((prev) => {
         const next = new Set(prev);
@@ -152,6 +185,16 @@ window.__ModuleLoader__.load({
       const markShown = (on) => setChecked((prev) => {
         const next = new Set(prev);
         for (const m of shown) { if (on) next.add(m.id); else next.delete(m.id); }
+        return next;
+      });
+      const toggleGroup = (rows, on) => setChecked((prev) => {
+        const next = new Set(prev);
+        for (const m of rows) { if (on) next.add(m.id); else next.delete(m.id); }
+        return next;
+      });
+      const toggleCollapse = (key) => setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key); else next.add(key);
         return next;
       });
       const save = async () => {
@@ -192,16 +235,42 @@ window.__ModuleLoader__.load({
             ? h("div", { className: "obm-row" }, busy ? t("loading") : "")
             : shown.length === 0
               ? h("div", { className: "obm-row" }, t("empty"))
-              : shown.map((m) =>
-                  h("label", { key: m.id, className: "obm-row" + (checked.has(m.id) ? "" : " off") },
-                    h("input", {
-                      type: "checkbox",
-                      checked: checked.has(m.id),
-                      onChange: () => toggle(m.id),
+              : groups.map((g) => {
+                  const total = g.rows.length;
+                  const onCount = g.rows.filter((m) => checked.has(m.id)).length;
+                  const allOn = total > 0 && onCount === total;
+                  const isCollapsed = collapsed.has(g.key);
+                  return h("div", { key: g.key || "(no-prefix)", className: "obm-group" },
+                    h("div", { className: "obm-group-head" },
+                      h("input", {
+                        type: "checkbox",
+                        checked: allOn,
+                        ref: (el) => { if (el) el.indeterminate = onCount > 0 && !allOn; },
+                        onChange: () => toggleGroup(g.rows, !allOn),
+                        title: t("groupToggle"),
+                      }),
+                      h("span", { className: "obm-group-title", onClick: () => toggleCollapse(g.key) }, g.label),
+                      h("span", { className: "obm-group-count" }, t("count", { n: onCount, total })),
+                      h("button", {
+                        className: "obm-chevron",
+                        onClick: () => toggleCollapse(g.key),
+                        "aria-label": isCollapsed ? t("expand") : t("collapse"),
+                      }, isCollapsed ? "▸" : "▾"),
+                    ),
+                    isCollapsed ? null : g.rows.map((m) => {
+                      const label = rowLabel(m);
+                      return h("label", { key: m.id, className: "obm-row" + (checked.has(m.id) ? "" : " off") },
+                        h("input", {
+                          type: "checkbox",
+                          checked: checked.has(m.id),
+                          onChange: () => toggle(m.id),
+                        }),
+                        h("span", { className: "obm-row-name" }, label.primary),
+                        label.secondary ? h("span", { className: "obm-row-sub" }, label.secondary) : null,
+                      );
                     }),
-                    h("span", { className: "obm-row-name" }, m.name || m.id),
-                    h("span", { className: "obm-row-id" }, m.id),
-                  )),
+                  );
+                }),
         ),
         h("div", { className: "obm-foot" },
           h("button", { className: "obm-btn obm-btn-primary", onClick: () => void save(), disabled: busy || state === null }, busy ? t("saving") : t("save")),
