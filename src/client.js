@@ -21,8 +21,8 @@ window.__ModuleLoader__.load({
     // ---- 自持字典（zh 优先；en 兜底）----
     const DICT = {
       zh: {
-        panel: "模型暴露",
-        title: "OpenCode 模型暴露设置",
+        panel: "OC-bridge",
+        title: "OC-bridge",
         subtitle: "勾选要暴露到 DSH 模型选择器的模型；保存后下次打开选择器生效。",
         search: "筛选模型…",
         selectAll: "全选当前",
@@ -43,8 +43,8 @@ window.__ModuleLoader__.load({
         serviceDown: "设置服务不可用：host 侧 connection 路由未注册",
       },
       en: {
-        panel: "Models",
-        title: "OpenCode model exposure",
+        panel: "OC-bridge",
+        title: "OC-bridge",
         subtitle: "Tick the models to expose in the DSH model picker; saved changes apply on next open.",
         search: "Filter models…",
         selectAll: "Select shown",

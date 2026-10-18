@@ -64,9 +64,9 @@ MVP 目标是：
 
 思考强度：2026-10-18 起声明 `reasoning.efforts`（off/minimal/low/medium/high/max）并把 `reasoningEffort` 透传 `opencode run --variant`（DSH 0.2.1 校验要求，见 `issues/ISSUE-003-dsh-021-contract-drift.md`）；`--variant` 对免费模型实测不响应，「接受并转发」≠「保证生效」。
 
-### 模型暴露设置（侧边栏入口）
+### 模型暴露设置（侧边栏入口「OC-bridge」）
 
-不用手改 `config.json`：client 半区在**左栏「插件」卡旁**注册了「模型暴露」入口，点开是勾选面板——全量目录（含默认隐藏的 `opencode-go/*`）逐条勾选，保存后写回 `config.json` 的 `models` 段（白名单语义：勾选清单 → `include`；全不勾 → `exclude: ["*"]`），下次打开模型选择器即生效。
+不用手改 `config.json`：client 半区在**左栏「插件」卡旁**注册了「**OC-bridge**」入口，点开是勾选面板——全量目录按前缀分组折叠（含默认隐藏的 `opencode-go/*`），组头三态勾选支持整组批量操作，勾选结果写回 `config.json` 的 `models` 段（白名单语义：勾选清单 → `include`；全不勾 → `exclude: ["*"]`），下次打开模型选择器即生效。
 
 - 通信走 `ctx.connection.fetch.register` 的 `/api/opencode-bridge.models`（读）与 `/api/opencode-bridge.filter`（写），位于浏览器会话 cookie 鉴权栅栏内，无需额外鉴权；
 - host 侧 `connection` 服务缺失时只记诊断、入口数据加载失败但**不影响模型桥主功能**；
