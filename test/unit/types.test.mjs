@@ -6,8 +6,8 @@ test("DEFAULT_TIMEOUTS 的值必须与 spec §8.1 实测结论一致", () => {
   assert.deepEqual(DEFAULT_TIMEOUTS, {
     startupMs: 30_000,
     firstEventMs: 45_000,
-    idleMs: 300_000,
-    totalMs: 600_000,
+    idleMs: 600_000,
+    totalMs: 1_800_000,
     shutdownMs: 3_000,
   });
 });

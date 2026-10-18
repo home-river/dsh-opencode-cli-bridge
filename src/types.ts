@@ -6,11 +6,16 @@ export interface CliTimeouts {
   shutdownMs: number;
 }
 
+/**
+ * 五层超时默认值（spec §8.1）。2026-10-18 解禁批放宽 idle/total：
+ * OC 回合现在执行自有工具，单个工具执行（安装/构建类）可长时间无事件（idle 300s→600s），
+ * 完整 agent run 可达数十分钟（total 600s→1800s）；启动两层不变。
+ */
 export const DEFAULT_TIMEOUTS: CliTimeouts = {
   startupMs: 30_000,
   firstEventMs: 45_000,
-  idleMs: 300_000,
-  totalMs: 600_000,
+  idleMs: 600_000,
+  totalMs: 1_800_000,
   shutdownMs: 3_000,
 };
 

@@ -184,8 +184,8 @@ export interface CliBridgeOptions {
 export interface CliTimeouts {
   startupMs: number;    // 默认 30_000
   firstEventMs: number; // 默认 45_000
-  idleMs: number;       // 默认 300_000，自【上一个事件】起算（见 §8.1）
-  totalMs: number;      // 默认 600_000
+  idleMs: number;       // 默认 600_000，自【上一个事件】起算（见 §8.1）
+  totalMs: number;      // 默认 1_800_000
   shutdownMs: number;   // 默认 3_000，kill 前宽限期
 }
 
@@ -434,8 +434,8 @@ export type ErrorCode =
 |---|---|---|---|
 | `startup` | 30s | spawn 调用 | `TIMEOUT` |
 | `firstEvent` | 45s | spawn 成功 | `TIMEOUT` |
-| `idle` | **300s** | **上一个事件** | `TIMEOUT` |
-| `total` | 600s | spawn 调用 | `TIMEOUT` |
+| `idle` | **600s** | **上一个事件** | `TIMEOUT` |
+| `total` | 1800s | spawn 调用 | `TIMEOUT` |
 | `shutdown` | 3s | 发出 kill | 强制 `taskkill /T /F` |
 
 依据 [CLI-BEHAVIOR.md](../../CLI-BEHAVIOR.md) §6 / §12：
@@ -446,6 +446,9 @@ export type ErrorCode =
   实测 800 字 → 静默 **46.5s**（`part.time.end - part.time.start`）；3000 字可能 > 170s。
   原定 `idle 120s` **会误杀正常回答**，故提到 **300s**
 - **`idle` 必须自"上一个事件"起算**，否则长回答会被误杀
+- **2026-10-18 解禁批放宽**：OC 回合现在执行自有工具（工具面归属 OC，见 prompt.ts 演进注记）——
+  单个工具执行（安装/构建类）可长时间无事件，`idle` 300s→**600s**；完整 agent run 可达数十分钟，
+  `total` 600s→**1800s**。启动两层不变
 
 ### 8.2 `settle()` 单出口（防竞争）
 

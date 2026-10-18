@@ -102,7 +102,7 @@ export function apply(ctx: PluginContext): (() => void) & { replace?: (providers
       const ts = new Date().toISOString();
       safeAppend(
         "requests.log",
-        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} effort=${info.reasoningEffort ?? "-"} notice=${info.prompt.includes("(bridge constraint)") ? 1 : 0} promptChars=${info.prompt.length}\n`,
+        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} effort=${info.reasoningEffort ?? "-"} promptChars=${info.prompt.length}\n`,
       );
       if (info.prompt !== "") {
         try {

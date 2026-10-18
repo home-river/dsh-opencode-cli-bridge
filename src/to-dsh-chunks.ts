@@ -88,6 +88,7 @@ export class DshChunkConverter {
   #ended = false;
   #sawText = false;
   #toolNames: string[] = [];
+  #seenToolCalls = new Set<string>();
 
   constructor(options: DshChunkOptions = {}) {
     const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -103,12 +104,33 @@ export class DshChunkConverter {
       case "start":
         return [];
       case "tool": {
-        // 工具事件不转发（桥是纯文本通道），只记名字供兜底说明（ISSUE-001）。
-        const tool = (event.raw as { tool?: unknown } | undefined)?.tool;
-        if (typeof tool === "string" && tool !== "" && !this.#toolNames.includes(tool)) {
-          this.#toolNames.push(tool);
+        // 解禁批 #2：OC 自有工具的执行事件回流为可见进度文本（🔧 行）。
+        // 刻意不产 tool-call 块——那会让 DSH 拾起自己的工具循环（工具面归属 OC，这里只透明化）。
+        const raw = (event.raw ?? {}) as {
+          type?: unknown;
+          tool?: unknown;
+          callID?: unknown;
+          part?: { tool?: unknown; callID?: unknown };
+        };
+        const name =
+          typeof raw.part?.tool === "string" ? raw.part.tool
+            : typeof raw.tool === "string" ? raw.tool : "";
+        const callId =
+          typeof raw.part?.callID === "string" ? raw.part.callID
+            : typeof raw.callID === "string" ? raw.callID : "";
+        if (name !== "" && !this.#toolNames.includes(name)) this.#toolNames.push(name);
+        if (raw.type === "tool_result") return []; // 结果事件不重复出进度
+        if (callId !== "") {
+          if (this.#seenToolCalls.has(callId)) return [];
+          this.#seenToolCalls.add(callId);
         }
-        return [];
+        const line = `🔧 ${name === "" ? "tool" : name}`;
+        const index = this.#index++;
+        return [
+          { type: "block-start", index, blockType: "text" },
+          { type: "text-delta", index, text: line },
+          { type: "block-end", index, block: { type: "text", text: line } },
+        ];
       }
       case "text": {
         if (event.text === "") return [];
@@ -157,15 +179,16 @@ export class DshChunkConverter {
     if (this.#ended) return [];
     this.#ended = true;
     const out: DshStreamChunk[] = [];
-    // 空气泡兜底（ISSUE-001 实锤根因：纯工具轮零正文）：
-    // 模型只做了工具调用、没有任何正文时，合成一段透明说明，避免 DSH 渲染空气泡；
+    // 零文本保险（原 ISSUE-001 空气泡兜底，2026-10-18 解禁批降级为保险）：
+    // 工具执行已由进度块（🔧 行）透明化；这里只防「全程零正文」的空气泡。
     // finish(tool-calls) 但无 tool-call 块会让 DSH 悬在工具语义上，一并改为正常 stop 收尾。
     // 取消（forceFallback）路径不合成：aborted 是明确终态，注入正文反而误导。
     if (!forceFallback && !this.#sawText && this.#finish?.kind === "tool-calls") {
-      const names = this.#toolNames.slice(0, 3).join(", ");
+      const names = this.#toolNames.slice(0, 3).join("、");
       const notice =
-        `[OC-bridge] 本轮模型只进行了工具调用${names ? `（${names}）` : ""}，` +
-        `当前桥接版本不支持工具调用转发，因此没有正文输出。请直接用文字提问，或换个问法。`;
+        names === ""
+          ? `[OC-bridge] 本轮没有产生文本输出。`
+          : `[OC-bridge] 本轮模型执行了工具（${names}）但没有产生文本输出。`;
       const index = this.#index++;
       out.push({ type: "block-start", index, blockType: "text" });
       for (const piece of chunkText(notice, this.#chunkSize)) {

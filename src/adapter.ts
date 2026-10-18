@@ -120,7 +120,7 @@ export class OpencodeBridgeAdapter {
   }
 
   stream(options: AdapterGenerateOptions): AsyncIterable<DshStreamChunk> {
-    const prompt = buildPrompt({ system: options.system, messages: options.messages, textOnly: true });
+    const prompt = buildPrompt({ system: options.system, messages: options.messages });
     const empty = prompt === "";
     const workspace = empty ? "" : this.#deps.resolveWorkspace(options.sessionId);
     try {

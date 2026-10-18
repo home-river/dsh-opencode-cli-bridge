@@ -60,10 +60,14 @@ test("空串 text -> 无输出", () => {
   assert.deepEqual(c.push(textEvent("")), []);
 });
 
-test("start / tool 事件 -> 无输出", () => {
+test("start 事件 -> 无输出；tool 事件（无名）-> 可见进度块兜名 tool", () => {
   const c = new DshChunkConverter();
   assert.deepEqual(c.push({ kind: "start", sessionId: "ses_1" }), []);
-  assert.deepEqual(c.push({ kind: "tool", sessionId: "ses_1", raw: {} }), []);
+  assert.deepEqual(c.push({ kind: "tool", sessionId: "ses_1", raw: {} }), [
+    { type: "block-start", index: 0, blockType: "text" },
+    { type: "text-delta", index: 0, text: "🔧 tool" },
+    { type: "block-end", index: 0, block: { type: "text", text: "🔧 tool" } },
+  ]);
 });
 
 test("finish 事件不立即产出，end() 产出 usage+finish(stop)", () => {
@@ -113,33 +117,47 @@ test("finish(max-tokens) / finish(tool-calls) 映射", () => {
   assert.deepEqual(b.end()[1].reason, { kind: "tool-calls" });
 });
 
-test("空气泡兜底：零正文工具轮 -> 合成说明正文 + 正常 stop 收尾（ISSUE-001）", () => {
+test("工具事件回流：tool_use 产出可见进度块（🔧 行），callID 去重、tool_result 不重复（解禁批 #2）", () => {
   const c = new DshChunkConverter({ chunkSize: 1000 });
-  c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } });
-  c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c2" } });
-  c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "read", callID: "c3" } });
-  c.push(finishEvent({ reason: "tool-calls" }));
-  const out = c.end();
+  const out = [
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } }),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } }),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { type: "tool_result", part: { tool: "read", callID: "c3" } } }),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { type: "tool_use", part: { tool: "read", callID: "c3x" } } }),
+  ];
+  const texts = out.filter((x) => x.type === "text-delta").map((x) => x.text);
+  assert.deepEqual(texts, ["🔧 bash", "🔧 read"]);
   assert.equal(out[0].type, "block-start");
-  assert.equal(out[0].blockType, "text");
+  assert.equal(out.at(-1).type, "block-end");
+});
+
+test("零文本保险：工具轮零正文 -> 进度块 + 保险文案（含工具名）+ stop 收尾（解禁批 #3）", () => {
+  const c = new DshChunkConverter({ chunkSize: 1000 });
+  const out = [
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } }),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c2" } }),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "read", callID: "c3" } }),
+    ...c.push(finishEvent({ reason: "tool-calls" })),
+    ...c.end(),
+  ];
   const body = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
-  assert.ok(body.includes("工具调用"), body);
-  assert.equal((body.match(/bash/g) ?? []).length, 1, "工具名应去重");
-  assert.ok(body.includes("read"));
+  assert.ok(body.includes("🔧 bash") && body.includes("🔧 read"), body);
+  assert.ok(body.includes("执行了工具（bash、read）但没有产生文本输出"), body);
   assert.equal(out.at(-2).type, "usage");
   assert.deepEqual(out.at(-1).reason, { kind: "stop" }, "无 tool-call 块时不得收尾于 tool-calls");
 });
 
-test("空气泡兜底：无工具事件的纯 tool-calls 收尾也兜底（名字留空）", () => {
+test("零文本保险：无正文无工具 -> 保险文案 + stop 收尾（去异常叙事）", () => {
   const c = new DshChunkConverter();
   c.push(finishEvent({ reason: "tool-calls" }));
   const out = c.end();
   assert.deepEqual(out.at(-1).reason, { kind: "stop" });
   const body = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
-  assert.ok(body.includes("工具调用"));
+  assert.ok(body.includes("本轮没有产生文本输出"), body);
+  assert.ok(!body.includes("不支持工具调用转发"), "不再使用异常叙事");
 });
 
-test("空气泡兜底不误伤：有正文的工具轮照常透传", () => {
+test("零文本保险不误伤：有正文的工具轮照常透传（进度块独立于正文）", () => {
   const c = new DshChunkConverter();
   const out = [
     ...c.push(textEvent("这是正文")),
@@ -147,8 +165,9 @@ test("空气泡兜底不误伤：有正文的工具轮照常透传", () => {
     ...c.push(finishEvent({ reason: "tool-calls" })),
     ...c.end(),
   ];
-  const texts = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
-  assert.equal(texts, "这是正文", "有正文时不合成说明");
+  const blocks = out.filter((x) => x.type === "text-delta").map((x) => x.text);
+  assert.deepEqual(blocks, ["这是正文", "🔧 read"], "正文不被污染，进度独立成块");
+  assert.ok(!blocks.join("").includes("本轮"), "有正文时不合成保险文案");
   assert.deepEqual(out.at(-1).reason, { kind: "tool-calls" });
 });
 

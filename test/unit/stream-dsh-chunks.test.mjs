@@ -69,15 +69,16 @@ test("fake multi-step -> 只有一条 usage+finish，reason 取最后（stop）"
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("fake tool-only -> 空气泡兜底：合成说明正文 + finish(stop)（ISSUE-001）", async () => {
+test("fake tool-only -> 工具进度可见 + 零文本保险 + finish(stop)（解禁批）", async () => {
   const { dir, opts } = baseOpts("tool-only");
   try {
     const chunks = await collect(opts);
     const starts = chunks.filter((c) => c.type === "block-start");
-    assert.equal(starts.length, 1, "合成一个说明文本块");
-    assert.equal(starts[0].blockType, "text");
+    assert.equal(starts.length, 2, "进度块 + 保险文本块");
+    assert.ok(starts.every((s) => s.blockType === "text"));
     const body = chunks.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
-    assert.ok(body.includes("工具调用"), body);
+    assert.ok(body.includes("🔧 bash"), body);
+    assert.ok(body.includes("执行了工具（bash）但没有产生文本输出"), body);
     assert.deepEqual(chunks.at(-1).reason, { kind: "stop" }, "无 tool-call 块不得收尾于 tool-calls");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

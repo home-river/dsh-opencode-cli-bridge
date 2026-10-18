@@ -43,6 +43,22 @@ test("prompt 经 stdin 送达：常规 prompt 不占 argv（stdin-echo 回显长
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("run argv 携带 --auto：headless 放行 OC 自有工具权限（解禁批），护栏仍归 OC 配置", async () => {
+  const { dir, opts } = baseOpts("normal");
+  const argsFile = join(dir, "args.jsonl");
+  process.env.FAKE_LOG_ARGS = argsFile;
+  try {
+    const r = await runCliBridge(opts);
+    assert.equal(r.finishReason, "stop");
+    const args = JSON.parse(readFileSync(argsFile, "utf8").trim().split("\n")[0]);
+    assert.ok(args.includes("--auto"), `argv 应含 --auto：${JSON.stringify(args)}`);
+    assert.ok(args.includes("--format") && args.includes("json"), "事件流抓手 --format json 保持");
+  } finally {
+    delete process.env.FAKE_LOG_ARGS;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("prompt 经 stdin 送达：40K 超长 prompt 不触发 CLI_START_FAILED（Windows 32767 命令行上限回归）", async () => {
   const { dir, opts } = baseOpts("stdin-echo", { prompt: "x".repeat(40_000) });
   try {

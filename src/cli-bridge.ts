@@ -64,6 +64,10 @@ function buildArgs(opts: CliBridgeOptions, workspace: string): string[] {
     "--dir", workspace,
     "--model", opts.model,
     "--format", "json",
+    // 解禁批（2026-10-18）：OC 回合自动使用 OC 自己的工具，headless 场景必须 `--auto`
+    // 放行权限（opencode-docs/cli.md「桥接开发要点」原话），否则非交互模式下工具调用被拒。
+    // 护栏钩子：--auto 只自动批准「未显式拒绝」的权限，OC 配置仍可显式 deny 具体权限。
+    "--auto",
   ];
   if (opts.sessionId) args.push("--session", opts.sessionId);
   // 思考强度透传（ISSUE-003 问题 2）：DSH reasoningEffort → `opencode run --variant`。
