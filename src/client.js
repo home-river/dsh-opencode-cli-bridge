@@ -195,7 +195,7 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState(null);
       const [checked, setChecked] = React.useState(() => new Set());
       const [query, setQuery] = React.useState("");
-      const [collapsed, setCollapsed] = React.useState(() => new Set());
+      const [expanded, setExpanded] = React.useState(() => new Set()); // 分组默认全部折叠，展开的组记在这里
       const [busy, setBusy] = React.useState(false);
       const [status, setStatus] = React.useState(null); // {kind:"ok"|"err", text}
       const [saved, setSaved] = React.useState(() => new Set()); // 服务端可见集合基线（dirty 判定）
@@ -252,7 +252,7 @@ window.__ModuleLoader__.load({
         for (const m of rows) { if (on) next.add(m.id); else next.delete(m.id); }
         return next;
       });
-      const toggleCollapse = (key) => setCollapsed((prev) => {
+      const toggleCollapse = (key) => setExpanded((prev) => {
         const next = new Set(prev);
         if (next.has(key)) next.delete(key); else next.add(key);
         return next;
@@ -310,7 +310,7 @@ window.__ModuleLoader__.load({
                   const total = g.rows.length;
                   const onCount = g.rows.filter((m) => checked.has(m.id)).length;
                   const allOn = total > 0 && onCount === total;
-                  const isCollapsed = q === "" && collapsed.has(g.key);
+                  const isCollapsed = q === "" && !expanded.has(g.key);
                   return h("div", { key: g.key || "(no-prefix)", className: "obm-group" },
                     h("div", { className: "obm-group-head" },
                       h("input", {
