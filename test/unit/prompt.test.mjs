@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildPrompt } from "../../lib/prompt.js";
+import { buildDeltaPrompt } from "../../lib/prompt.js";
+import { hashText } from "../../lib/session-store.js";
 
 test("单条 user 消息 -> User 段", () => {
   assert.equal(
@@ -61,4 +63,29 @@ test("解禁批：prompt 不做任何工具声明（原 textOnly 禁用工具指
   const out = buildPrompt({ messages });
   assert.equal(out, "User:\n看一下工作区", "保真拼接，不附加任何桥级指令");
   assert.ok(!out.includes("工具调用") && !out.includes("bridge constraint"), "不得含工具禁令/声明");
+});
+
+test("buildDeltaPrompt：只发新消息，system 变化才随发", () => {
+  const msgs = [
+    { role: "user", content: [{ type: "text", text: "第一问" }] },
+    { role: "assistant", content: [{ type: "text", text: "第一答" }] },
+    { role: "user", content: [{ type: "text", text: "第二问" }] },
+  ];
+  // 从账本 0 起步、system 首次发送
+  const first = buildDeltaPrompt({ system: "S1", messages: msgs, sentCount: 0, systemHash: "" });
+  assert.ok(first.text.includes("System:\nS1"));
+  assert.ok(first.text.includes("第一问") && first.text.includes("第二问"));
+  assert.equal(first.nextSentCount, 3);
+  assert.equal(first.nextSystemHash, hashText("S1"));
+  // 已送 2 条、system 未变：只发第三条、无 System 段
+  const second = buildDeltaPrompt({ system: "S1", messages: msgs, sentCount: 2, systemHash: hashText("S1") });
+  assert.ok(!second.text.includes("System:"));
+  assert.ok(second.text.includes("第二问") && !second.text.includes("第一问"));
+  assert.equal(second.nextSentCount, 3);
+});
+
+test("buildDeltaPrompt：system 变化时随增量重发 system 段", () => {
+  const msgs = [{ role: "user", content: [{ type: "text", text: "q" }] }];
+  const d = buildDeltaPrompt({ system: "S2", messages: msgs, sentCount: 0, systemHash: hashText("S1") });
+  assert.ok(d.text.includes("System:\nS2"));
 });

@@ -1,3 +1,5 @@
+import { hashText } from "./session-store.js";
+
 export interface PromptContentBlock {
   readonly type: string;
   readonly text?: string;
@@ -46,4 +48,48 @@ export function buildPrompt(input: BuildPromptInput): string {
     sections.push(`${label}:\n${texts.join("\n")}`);
   }
   return sections.join("\n\n");
+}
+
+export interface BuildDeltaInput {
+  system?: string;
+  messages: readonly PromptMessage[];
+  /** 账本水位：已送达 OC 的消息条数。 */
+  sentCount: number;
+  /** 账本记录的 system 哈希（"" = 从未送过）。 */
+  systemHash: string;
+}
+
+export interface DeltaPrompt {
+  text: string;
+  nextSentCount: number;
+  nextSystemHash: string;
+}
+
+/**
+ * 增量透传（1:1 会话桥）：只渲染 [sentCount, end) 的新消息；
+ * system 仅在内容变化时随增量发送（哈希比对），避免 OC 历史膨胀。
+ */
+export function buildDeltaPrompt(input: BuildDeltaInput): DeltaPrompt {
+  const sections: string[] = [];
+  const sys = input.system ?? "";
+  const sysHash = sys === "" ? input.systemHash : hashText(sys);
+  if (sys !== "" && sysHash !== input.systemHash) {
+    sections.push(`System:\n${sys}`);
+  }
+  for (const message of input.messages.slice(input.sentCount)) {
+    const texts: string[] = [];
+    for (const block of message.content ?? []) {
+      if (block.type === "text" && typeof block.text === "string" && block.text !== "") {
+        texts.push(block.text);
+      }
+    }
+    if (texts.length === 0) continue;
+    const label = ROLE_LABELS[message.role] ?? message.role;
+    sections.push(`${label}:\n${texts.join("\n")}`);
+  }
+  return {
+    text: sections.join("\n\n"),
+    nextSentCount: input.messages.length,
+    nextSystemHash: sysHash,
+  };
 }
