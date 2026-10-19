@@ -22,9 +22,11 @@
 - `node --test` 单测 239 条全绿（含真实子进程 spawn 路径）
 - 真实 CLI 集成测试（`OCBRIDGE_IT=1` 手动开启）R01–R08、R11
 
-### 发布待办（发布前清零）
+### 发布待办（发布前清零，完整操作单见 docs/RELEASE.md）
 
 - [ ] npm 包名/仓库名定案后补 `repository` / `homepage` / `bugs` 字段，
       并同步 `client.js` 模块 id 与 `cordis.patch.yml` 的包名（有单测守护二者一致）
-- [ ] DSH 版本兼容声明（peer/engines）随市场清单查证结果落定
-- [ ] README 截图补充
+- [x] DSH 版本兼容声明：顶层 `engines.dsh: ">=0.2.1-0 <0.3.0"`（查证结论：宿主只认顶层
+      `engines.dsh`、声明后忽略 peer；caret 跨 minor 必拒；`dsh.plugin.json` 属已移除旧机制，无需准备）
+- [ ] README 截图 + 仓库 `screenshots.json`（市场收录用）
+- [ ] 市场收录：GitHub topic `dsh-plugin` + 向 awesome-dsh-plugin 提 YAML 条目 PR

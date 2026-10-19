@@ -90,7 +90,9 @@ DSH 会话 → DSH LLM 服务 → opencode-bridge LlmAdapter
 
 | 你的 DSH 版本 | 本插件版本 |
 |---|---|
-| 0.2.x（实测 0.2.1） | 0.1.0 |
+| 0.2.1 及之后的 0.2.x（含 0.2.1-rc 线） | 0.1.0 |
+
+插件以顶层 `engines.dsh: ">=0.2.1-0 <0.3.0"` 声明兼容范围，安装与启动都会校验；不满足时插件会被整包跳过并列入 `skippedBundles`（可用 `dsh plugin --profile <p> allow-version <pkg@ver> --dsh-version <ver> --accept-risk` 强行豁免，风险自担）。
 
 ## 开发
 
