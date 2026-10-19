@@ -1,0 +1,41 @@
+timestamp=2026-10-15T09:53:56.773Z level=INFO run=35c86138 message="creating instance" directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol"
+timestamp=2026-10-15T09:53:56.778Z level=INFO run=35c86138 message=fromDirectory directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol"
+timestamp=2026-10-15T09:53:57.343Z level=INFO run=35c86138 message=bootstrapping directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol"
+timestamp=2026-10-15T09:53:57.361Z level=INFO run=35c86138 message=loading path="C:\\Users\\86181\\.config\\opencode\\config.json"
+timestamp=2026-10-15T09:53:57.375Z level=INFO run=35c86138 message=loading path="C:\\Users\\86181\\.config\\opencode\\opencode.json"
+timestamp=2026-10-15T09:53:57.376Z level=INFO run=35c86138 message=loading path="C:\\Users\\86181\\.config\\opencode\\opencode.jsonc"
+timestamp=2026-10-15T09:53:57.654Z level=INFO run=35c86138 message="all LSPs are disabled"
+timestamp=2026-10-15T09:53:57.656Z level=INFO run=35c86138 message="all formatters are disabled"
+timestamp=2026-10-15T09:53:57.657Z level=INFO run=35c86138 message=init
+timestamp=2026-10-15T09:53:58.048Z level=INFO run=35c86138 message=created id=ses_ec10468e0ffe0w8AHU9h3iQuc0 slug=silent-circuit version=1.19.0 projectID=626d9823f1dac2cecbe934b9f1fb823ffb292d03 directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" path=fixtures/cli-probe-protocol workspaceID=undefined parentID=undefined title="New session - 2026-10-15T09:53:58.047Z" agent=undefined model=undefined metadata=undefined permission="[{\"permission\":\"question\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"plan_enter\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"plan_exit\",\"pattern\":\"*\",\"action\":\"deny\"}]" cost=0 tokens.input=0 tokens.output=0 tokens.reasoning=0 tokens.cache.read=0 tokens.cache.write=0 time.created=1792058038047 time.updated=1792058038047
+timestamp=2026-10-15T09:53:58.268Z level=INFO run=35c86138 message="event connected"
+timestamp=2026-10-15T09:53:59.820Z level=INFO run=35c86138 message=loop session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 step=0
+timestamp=2026-10-15T09:53:59.869Z level=INFO run=35c86138 message=stream providerID=opencode modelID=mimo-v2.6-flash-free session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 small=true agent=title mode=primary
+timestamp=2026-10-15T09:53:59.906Z level=INFO run=35c86138 message="llm runtime selected" llm.runtime=ai-sdk llm.provider=opencode llm.model=mimo-v2.6-flash-free
+timestamp=2026-10-15T09:54:00.875Z level=INFO run=35c86138 message=tracking hash=e164fd1e3ff25053c255e02dbb252ab9c340c55b cwd="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" git="C:\\Users\\86181\\.local\\share\\opencode\\snapshot\\626d9823f1dac2cecbe934b9f1fb823ffb292d03\\c6f1a21478f1f452481784c1055fe424f39de802"
+timestamp=2026-10-15T09:54:01.032Z level=INFO run=35c86138 message="shell tool using shell" shell="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE"
+timestamp=2026-10-15T09:54:01.128Z level=WARN run=35c86138 message="duplicate skill name" name=executing-plans existing="C:\\Users\\86181\\.claude\\skills\\executing-plans\\SKILL.md" duplicate="C:\\Users\\86181\\.config\\opencode\\skills\\executing-plans\\SKILL.md"
+timestamp=2026-10-15T09:54:01.130Z level=WARN run=35c86138 message="duplicate skill name" name=requesting-code-review existing="C:\\Users\\86181\\.claude\\skills\\requesting-code-review\\SKILL.md" duplicate="C:\\Users\\86181\\.config\\opencode\\skills\\requesting-code-review\\SKILL.md"
+timestamp=2026-10-15T09:54:01.133Z level=WARN run=35c86138 message="duplicate skill name" name=subagent-driven-development existing="C:\\Users\\86181\\.claude\\skills\\subagent-driven-development\\SKILL.md" duplicate="C:\\Users\\86181\\.config\\opencode\\skills\\subagent-driven-development\\SKILL.md"
+timestamp=2026-10-15T09:54:01.135Z level=WARN run=35c86138 message="duplicate skill name" name=caveman existing="C:\\Users\\86181\\.claude\\skills\\caveman\\SKILL.md" duplicate="C:\\Users\\86181\\.config\\opencode\\skills\\caveman\\SKILL.md"
+timestamp=2026-10-15T09:54:01.136Z level=WARN run=35c86138 message="duplicate skill name" name=brainstorming existing="C:\\Users\\86181\\.claude\\skills\\brainstorming\\SKILL.md" duplicate="C:\\Users\\86181\\.config\\opencode\\skills\\brainstorming\\SKILL.md"
+timestamp=2026-10-15T09:54:01.137Z level=WARN run=35c86138 message="duplicate skill name" name=dispatching-parallel-agents existing="C:\\Users\\86181\\.claude\\skills\\dispatching-parallel-agents\\SKILL.md" duplicate="C:\\Users\\86181\\.config\\opencode\\skills\\dispatching-parallel-agents\\SKILL.md"
+timestamp=2026-10-15T09:54:01.139Z level=INFO run=35c86138 message=init count=20
+timestamp=2026-10-15T09:54:02.299Z level=INFO run=35c86138 message="watcher backend" directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" platform=win32 backend=windows
+timestamp=2026-10-15T09:54:02.334Z level=INFO run=35c86138 message="project copy refresh started" projectID=626d9823f1dac2cecbe934b9f1fb823ffb292d03
+timestamp=2026-10-15T09:54:05.161Z level=INFO run=35c86138 message="project copy refresh done" projectID=626d9823f1dac2cecbe934b9f1fb823ffb292d03 updated=[] removed=[]
+timestamp=2026-10-15T09:54:05.702Z level=INFO run=35c86138 message="booting location services" directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" workspaceID=undefined
+timestamp=2026-10-15T09:54:05.770Z level=INFO run=35c86138 message=process session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 messageID=msg_13efb9e18001hSrKK1Isi7irf1
+timestamp=2026-10-15T09:54:05.773Z level=INFO run=35c86138 message=stream providerID=opencode modelID=mimo-v2.6-flash-free session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 small=false agent=build mode=primary
+timestamp=2026-10-15T09:54:05.802Z level=INFO run=35c86138 message="llm runtime selected" llm.runtime=ai-sdk llm.provider=opencode llm.model=mimo-v2.6-flash-free
+timestamp=2026-10-15T09:54:09.097Z level=INFO run=35c86138 message=evaluated permission=glob pattern=* action.permission=* action.action=allow action.pattern=*
+timestamp=2026-10-15T09:54:10.438Z level=INFO run=35c86138 message=tracking hash=66d6e1b73a277b2d94d86d4e6530be042978ec31 cwd="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" git="C:\\Users\\86181\\.local\\share\\opencode\\snapshot\\626d9823f1dac2cecbe934b9f1fb823ffb292d03\\c6f1a21478f1f452481784c1055fe424f39de802"
+timestamp=2026-10-15T09:54:11.557Z level=INFO run=35c86138 message=loop session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 step=1
+timestamp=2026-10-15T09:54:12.756Z level=INFO run=35c86138 message=tracking hash=61d9211fc22ac9e73b6340fe7afe1140871b8bbf cwd="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" git="C:\\Users\\86181\\.local\\share\\opencode\\snapshot\\626d9823f1dac2cecbe934b9f1fb823ffb292d03\\c6f1a21478f1f452481784c1055fe424f39de802"
+timestamp=2026-10-15T09:54:12.959Z level=INFO run=35c86138 message=process session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 messageID=msg_13efbcbee001TkEpNH9TTxksKj
+timestamp=2026-10-15T09:54:12.961Z level=INFO run=35c86138 message=stream providerID=opencode modelID=mimo-v2.6-flash-free session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 small=false agent=build mode=primary
+timestamp=2026-10-15T09:54:13.001Z level=INFO run=35c86138 message="llm runtime selected" llm.runtime=ai-sdk llm.provider=opencode llm.model=mimo-v2.6-flash-free
+timestamp=2026-10-15T09:54:16.111Z level=INFO run=35c86138 message=tracking hash=43a1ec171ad52cbcc5d4754148f84d4400febf08 cwd="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol" git="C:\\Users\\86181\\.local\\share\\opencode\\snapshot\\626d9823f1dac2cecbe934b9f1fb823ffb292d03\\c6f1a21478f1f452481784c1055fe424f39de802"
+timestamp=2026-10-15T09:54:17.324Z level=INFO run=35c86138 message=loop session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0 step=2
+timestamp=2026-10-15T09:54:17.329Z level=INFO run=35c86138 message="exiting loop" session.id=ses_ec10468e0ffe0w8AHU9h3iQuc0
+timestamp=2026-10-15T09:54:17.350Z level=INFO run=35c86138 message="disposing instance" directory="F:\\project\\DSH\\plugin-dev\\fixtures\\cli-probe-protocol"

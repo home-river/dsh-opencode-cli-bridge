@@ -1,0 +1,1 @@
+[91m[1mError: [0mFailed to change directory to F:\project\DSH\plugin-dev\fixtures\cli-probe-protocol\missing-dir
