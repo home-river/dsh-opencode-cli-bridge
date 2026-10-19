@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # Windows：进程树清理（taskkill /T）、.cmd shim 解析等行为与平台强绑定，
+    # 单测在 Windows 上跑才有代表性；集成测试（OCBRIDGE_IT=1）需真实 OpenCode CLI，不进 CI。
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm test

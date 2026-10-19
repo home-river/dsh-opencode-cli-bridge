@@ -1,53 +1,52 @@
 # @home-river/dsh-opencode-bridge
 
-一个面向 DeepSeek Harness（DSH）的最小原生 `LlmAdapter` 插件工程，目标是先打通 **DSH → OpenCode 兼容流式接口** 的文本请求链路。
+> 在 DeepSeek Harness 里通过**本机 OpenCode CLI** 使用 OpenCode 兼容模型——原生 `LlmAdapter` 桥接，无 sidecar、无额外进程、无 API Key。
 
-本项目借鉴 `@opencode2dsh/dsh-plugin` 的适配器机制，但只实现可独立验证的 MVP，不包含 IP 池、订阅、sidecar、完整 CLI 流量伪装或插件设置页。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 插件 · MIT License
 
-## 当前阶段
+## 功能特性
 
-CliBridge（OC → 插件段）已完成：CLI 四级发现、进程壳（spawn/stdio 分流）、JSON Lines 解析、事件归一化、错误分类、五层超时、取消与 Windows 进程树清理，并通过单测 103 条与真实 CLI 集成测试（R01–R08、R11）。DSH StreamChunk 转换器（子项目 2）已完成，`streamDshChunks` 端到端入口 + fake CLI 端到端测试全绿。子项目 3（DSH LlmAdapter 接入）已完成：消息压平、模型目录与缓存、`OpencodeBridgeAdapter` 七方法合同、插件入口（`name`/`inject`/`apply`）与 bundle 打包合同（`dsh.bundle.patch` + `cordis.patch.yml`）全部落地，单测 185 条全绿。模型展示筛选已实现（`src/model-filter.ts`：配置化 include/exclude，默认隐藏 `opencode-go/*`，见下节）。剩 DSH 实机联调（TODO-27~30）：模型选择器、最小冒烟、工作区隔离与取消续接。
+- **原生 adapter**——模型选择器出现 `opencode-bridge` provider，装好即用
+- **会话一对一续接**——DSH 会话 ↔ OpenCode session 绑定，工具结果跨轮可见
+- **打字机流式**——OC 整段输出切块 + 节奏层模拟流式，思考/工具回传结构化镜像
+- **CLI 环境检测**——面板常驻状态卡（版本/路径/来源），未安装时给推荐安装命令，一键复制
+- **模型暴露筛选**——侧边卡片勾选面板，想暴露哪些模型自己定
+- **健壮性**——五层超时、取消即杀进程树（Windows `taskkill /T`）、12 类错误分类、协议解析防护
 
-- `src/`：CliBridge 模块（`types` / `errors` / `parse-lines` / `map-events` / `discover-cli` / `run-cli` / `cli-bridge` / `index`）。
-- `test/`：fake CLI 单测（`node:test`，零 runtime 依赖）+ 真实 CLI 集成测试（`OCBRIDGE_IT=1` 时启用）。
-- `docs/GOALS.md`：项目目的、MVP 功能、验收标准与后续实现阶段。
+## 前置要求
 
-## 计划中的请求链路
+| 依赖 | 要求 |
+|---|---|
+| DeepSeek Harness | 0.2.x（实测线 0.2.1） |
+| Node.js | ≥ 20（DSH 能跑就满足） |
+| **OpenCode CLI** | **必须**：本插件通过本机 `opencode` CLI 出模型流量 |
 
-```text
-DSH 会话
-  → DSH LLM 服务
-  → opencode-bridge LlmAdapter
-  → OpenCode 模型目录
-  → OpenCode-compatible 流式接口
-  → DSH text-delta / usage / finish
+OpenCode CLI 未装也没关系——打开 OC-bridge 面板，顶部「CLI 环境」区块会告诉你状态并给出**按你的环境推荐的安装命令**（自动探测 npm / scoop / choco），一键复制即可。
+
+## 安装
+
+```sh
+# npm 安装（推荐）
+dsh plugin --profile web add @home-river/dsh-opencode-bridge
+
+# 或本地 tgz / 源码安装
+npm pack
+dsh plugin --profile web add ./home-river-dsh-opencode-bridge-0.1.0.tgz
 ```
 
-## MVP 范围
+> 提示：找不到 `dsh` 命令时可用 `npx -y --package @deepseek-ai/dsh dsh plugin ...` 兜底。
 
-MVP 目标是：
+**验证**：重启 `dsh web`，打开模型选择器 → 出现 **opencode-bridge** 分组并列出模型 → 选中开聊。
 
-1. 在 DSH 中注册 `opencode-bridge` provider；
-2. 发现并展示至少一个可用的 OpenCode 免费模型；
-3. 将 DSH 纯文本请求转换为 OpenAI-compatible 流式请求；
-4. 将上游流式响应转换回 DSH 事件；
-5. 完成错误分类、临时错误重试与取消传播；
-6. 网络或上游故障不导致 DSH 主进程崩溃。
+## 使用
 
-完整设计与验收条件见 [`docs/GOALS.md`](./docs/GOALS.md)。
+- **模型选择器**：直接选 `opencode-bridge` 下的模型对话；
+- **OC-bridge 面板**（左栏「插件」卡旁）：顶部是 CLI 环境状态卡；下方勾选要暴露到选择器的模型，保存后下次打开选择器生效；
+- **取消**：DSH 侧停止生成即杀掉 CLI 进程树，不留孤儿进程。
 
-## 会话透传（DSH ↔ OC 会话 1:1 绑定，2026-10-19）
+## 配置
 
-插件的本职是**透传桥**：DSH 消息增量送入持久绑定的 OC 会话，OC 的输出（正文/思考/工具）全量回传 DSH。
-
-- **绑定**：`~/.dsh-opencode-bridge/sessions.json` 记录 `DSH 会话 → OC 会话（ses_*）+ 已送达消息水位`；续轮经 `opencode run --session` 续接 OC 自有历史——**工具结果跨轮可见**（模型能回答"你上一轮工具输出了什么"）。
-- **增量**：只发新消息（`buildDeltaPrompt`）；system 内容变化时才随发。历史不再全量压平重发。
-- **回传**：正文 → `text` 块；思考 → 原生 `reasoning` 块；工具调用/结果 → 结构化镜像（`🔧 tool input` / `└─ status | output`，借 `reasoning` 块承载——`tool-call` 块会触发 DSH 自己的工具循环造成双重执行，故刻意不用）。呈现复用 DSH 的折叠/收起机制。
-- **回退**：消息数小于账本（编辑/分支）或 OC 会话失效（`SESSION_INVALID`）时，自动重建会话并全量重放一次。
-
-## 模型展示筛选（可选配置）
-
-`opencode models` 会列出全部模型（含 `opencode-go/*`），选择器里太长；插件支持按需筛选展示。配置文件 `~/.dsh-opencode-bridge/config.json`：
+面板写回 `~/.dsh-opencode-bridge/config.json`，也可手改：
 
 ```json
 {
@@ -58,52 +57,53 @@ MVP 目标是：
 }
 ```
 
-规则（匹配对象是完整模型 id，模式仅支持 `*` 通配）：
+规则（匹配完整模型 id，模式仅支持 `*` 通配）：
 
-1. `include` 非空时只展示命中任一模式的条目；留空或不写 = 全放行；
+1. `include` 非空时只展示命中项；留空 = 全放行；
 2. `exclude` 优先级最高，命中即隐藏；
-3. **`opencode-go/*` 默认隐藏**；需要时在 `include` 里显式写 `opencode-go/*` 或具体 id 即可放回。
+3. `opencode-go/*` **默认隐藏**，需要时在 `include` 显式写回。
 
-其他行为：
+改完即生效（每次打开选择器重读），配置损坏不报错、退回默认并记诊断日志。
 
-- 每次打开模型选择器都重读配置，改完即生效，无需重启 DSH；
-- 配置文件缺失、JSON 损坏、字段类型不对都**不会报错**，一律退回默认（只隐藏 `opencode-go/*`），并把原因记入 `~/.dsh-opencode-bridge/diagnostics.log`；
-- 筛选只影响**展示**：目录缓存仍存全量，已被选中但后来被过滤掉的模型仍能继续请求；
-- 若过滤结果为空，兜底展示静态保底模型 `opencode/mimo-v2.6-flash-free`，避免选择器全空。
+**思考强度**：插件声明 `reasoning.efforts` 并把 `reasoningEffort` 透传 `opencode run --variant`；但免费模型实测不响应 `--variant`——「接受并转发」≠「保证生效」。
 
-思考强度：2026-10-18 起声明 `reasoning.efforts`（off/minimal/low/medium/high/max）并把 `reasoningEffort` 透传 `opencode run --variant`（DSH 0.2.1 校验要求，见 `issues/ISSUE-003-dsh-021-contract-drift.md`）；`--variant` 对免费模型实测不响应，「接受并转发」≠「保证生效」。
-
-### 模型暴露设置（侧边栏入口「OC-bridge」）
-
-不用手改 `config.json`：client 半区在**左栏「插件」卡旁**注册了「**OC-bridge**」入口，点开是勾选面板——全量目录按前缀分组折叠（含默认隐藏的 `opencode-go/*`），组头三态勾选支持整组批量操作，勾选结果写回 `config.json` 的 `models` 段（白名单语义：勾选清单 → `include`；全不勾 → `exclude: ["*"]`），下次打开模型选择器即生效。
-
-- 通信走 `ctx.connection.fetch.register` 的 `/api/opencode-bridge.models`（读）与 `/api/opencode-bridge.filter`（写），位于浏览器会话 cookie 鉴权栅栏内，无需额外鉴权；
-- host 侧 `connection` 服务缺失时只记诊断、入口数据加载失败但**不影响模型桥主功能**；
-- 面板为 vanilla JS + React.createElement 手写模块（`src/client.js` → `lib/client.js`，`scripts/build-client.mjs` 拷贝产出），未引入打包链。
-
-### CLI 环境检测（面板顶部「CLI 环境」区块）
-
-面板顶部常驻 CLI 状态卡，把「聊天失败才知道没装 CLI」前移为一目了然的环境自检：
-
-- **已安装**：显示版本（`<exe> --version`，5s 超时失败降级为「版本未知/探测失败」）、绝对路径、发现来源（explicit / path / npm-global / shim-resolved）与「重新检测」按钮；
-- **未安装**：给出**按当前环境推荐的安装命令**（PATH 上探测 npm > scoop > choco，都没有则 npm 兜底 + 提示），带一键复制按钮与 GitHub Releases 手动下载链接；
-- 检测逻辑复用 `discover-cli` 四级发现 + `src/install-advice.ts` 的包管理器探测，`CLI_NOT_FOUND` 报错（`discover-cli` 抛出与 DSH failure 消息）共用同一文案函数 `formatNotFoundMessage`，三处口径永远一致；
-- 只读探测，不执行任何安装/卸载；通信走 `/api/opencode-bridge.cli-status`（GET），信封与上两条路由一致。
-
-## 开发状态
+## 工作原理
 
 ```text
-[x] 工程目录
-[x] 包与 TypeScript 基础配置
-[x] 目的和目标功能实现文档
-[x] CliBridge：CLI 发现 / spawn / JSON Lines 解析 / 事件归一化
-[x] CliBridge：错误分类 / 五层超时 / 取消与进程树清理
-[x] 测试：fake CLI 单测 + 真实 CLI 集成测试
-[x] DSH LlmAdapter 合同
-[x] 插件入口与配置
-[x] DSH StreamChunk 转换（切块模拟流式，多 finish 折叠）
-[x] 模型目录与缓存
-[x] 模型暴露设置 UI（侧边栏入口 + 勾选面板，写回 config.json）
-[x] CLI 环境检测（面板状态卡：路径/来源/版本 + 安装建议与复制按钮）
-[ ] DSH 实机联调
+DSH 会话 → DSH LLM 服务 → opencode-bridge LlmAdapter
+  → opencode run --format json（本机 CLI，--dir 工作区 / --session 会话绑定）
+  → JSON Lines 事件 → DSH text-delta / reasoning / usage / finish
 ```
+
+- **绑定**：`~/.dsh-opencode-bridge/sessions.json` 记录 DSH 会话 → OC 会话与消息水位，续轮增量发送；账本漂移或 OC 会话失效时自动重建并全量重放一次；
+- **回传**：正文 → `text` 块；思考 → 原生 `reasoning` 块；工具调用/结果 → 结构化镜像（借 `reasoning` 块承载，避免 `tool-call` 块触发 DSH 工具循环造成双重执行）；
+- **发现**：CLI 四级发现（显式路径 → PATH → npm 全局布局 → 报错引导），Windows 下 `.cmd` shim 解析出真身 exe 直接执行，不用 shell。
+
+## 安全与隐私
+
+- **只调用本机已装的 OpenCode CLI**，流量从你的机器直达模型上游；无遥测、无第三方统计、无安装脚本（pnpm 零构建脚本摩擦）；
+- 诊断日志写在 `~/.dsh-opencode-bridge/`（`requests.log` 请求摘要 / `diagnostics.log` 协议诊断 / `sessions.json` 会话映射），不含 API Key；
+- ⚠️ **取证日志 `last-request.md` 会保存最近一次请求的 prompt 原文**（排障用），介意可随时删除该文件，功能不受影响；
+- 面板的「CLI 环境」检测是**只读**的：不执行任何安装/卸载动作，只探测并给命令。
+
+## DSH 版本兼容
+
+| 你的 DSH 版本 | 本插件版本 |
+|---|---|
+| 0.2.x（实测 0.2.1） | 0.1.0 |
+
+## 开发
+
+```sh
+npm test              # tsc 全量 + client 构建 + node --test 单测 239 条
+OCBRIDGE_IT=1 npm run test:integration   # 真实 CLI 集成测试（需本机 opencode）
+```
+
+- `src/`：host 半区（发现/spawn/协议/事件/adapter/路由）+ `client.js`（OC-bridge 面板，vanilla JS + React.createElement，无打包链）；
+- `test/`：fake CLI 单测（走真实 spawn 路径）+ 真实 CLI 集成测试；
+- `docs/`：`GOALS.md`（目标与验收）、`CLI-BEHAVIOR.md`（CLI 行为实测记录）、`research/`（DSH 合同研究）；
+- `issues/`：关键 bug 的现象/根因/修复方案记录（工程过程透明）。
+
+## License
+
+[MIT](./LICENSE)
