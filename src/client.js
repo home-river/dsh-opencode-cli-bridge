@@ -1,5 +1,5 @@
 /**
- * dsh-opencode-bridge client 半区：「模型暴露」设置面板。
+ * dsh-opencode-cli-bridge client 半区：「模型暴露」设置面板。
  *
  * 形态：DSH 浏览器模块表模块（window.__ModuleLoader__，官方 decoration 模板同款），
  * id 必须等于包名。零构建链手写 vanilla JS + React.createElement（react 取自模块表）。
@@ -9,7 +9,7 @@
  * host 的 createModelLister 每次列模型重读配置，下次打开模型选择器即生效。
  */
 window.__ModuleLoader__.load({
-  id: "@home-river/dsh-opencode-bridge",
+  id: "dsh-opencode-cli-bridge",
   factory(require) {
     const React = require("react");
     const h = React.createElement;

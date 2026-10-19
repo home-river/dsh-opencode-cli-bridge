@@ -1,4 +1,4 @@
-# @home-river/dsh-opencode-bridge
+# dsh-opencode-cli-bridge
 
 > 在 DeepSeek Harness 里通过**本机 OpenCode CLI** 使用 OpenCode 兼容模型——原生 `LlmAdapter` 桥接，无 sidecar、无额外进程、无 API Key。
 
@@ -27,11 +27,11 @@ OpenCode CLI 未装也没关系——打开 OC-bridge 面板，顶部「CLI 环�
 
 ```sh
 # npm 安装（推荐）
-dsh plugin --profile web add @home-river/dsh-opencode-bridge
+dsh plugin --profile web add dsh-opencode-cli-bridge
 
 # 或本地 tgz / 源码安装
 npm pack
-dsh plugin --profile web add ./home-river-dsh-opencode-bridge-0.1.0.tgz
+dsh plugin --profile web add ./dsh-opencode-cli-bridge-0.1.0.tgz
 ```
 
 > 提示：找不到 `dsh` 命令时可用 `npx -y --package @deepseek-ai/dsh dsh plugin ...` 兜底。

@@ -24,8 +24,10 @@
 
 ### 发布待办（发布前清零，完整操作单见 docs/RELEASE.md）
 
-- [ ] npm 包名/仓库名定案后补 `repository` / `homepage` / `bugs` 字段，
-      并同步 `client.js` 模块 id 与 `cordis.patch.yml` 的包名（有单测守护二者一致）
+- [x] 包名定案：**`dsh-opencode-cli-bridge`**（2026-10-19，裸名；因 npm 上已有同赛道
+      `dsh-opencode-bridge` / `dsh-opencode-cli` 而弃用近似名），`package.json` /
+      `client.js` 模块 id / `cordis.patch.yml` 三处已同步（单测守护一致性）
+- [ ] 建 GitHub 仓库（建议同名 `dsh-opencode-cli-bridge`）后补 `repository` / `homepage` / `bugs` 字段
 - [x] DSH 版本兼容声明：顶层 `engines.dsh: ">=0.2.1-0 <0.3.0"`（查证结论：宿主只认顶层
       `engines.dsh`、声明后忽略 peer；caret 跨 minor 必拒；`dsh.plugin.json` 属已移除旧机制，无需准备）
 - [ ] README 截图 + 仓库 `screenshots.json`（市场收录用）

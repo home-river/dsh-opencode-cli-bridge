@@ -90,5 +90,5 @@ test("打包合同：package.json 声明 bundle patch + client 面，cordis.patc
   assert.match(client, /window\.__ModuleLoader__\.load\(/);
   assert.ok(client.includes(`id: "${pkg.name}"`), "client 模块 id 必须等于包名");
   assert.doesNotThrow(() => new Function(client), "client.js 必须语法可编译");
-  assert.match(patch, /name:\s*'@home-river\/dsh-opencode-bridge'/);
+  assert.match(patch, /name:\s*'dsh-opencode-cli-bridge'/);
 });

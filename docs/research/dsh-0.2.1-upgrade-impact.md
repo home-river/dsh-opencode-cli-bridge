@@ -34,7 +34,7 @@
 |---|---|---|
 | 移除 runtime invariant 插件及 `./invariant` 导出（**Breaking**） | ✅ 无影响 | 插件未使用 invariant；`package.json` exports 只有 `.` 与 `./cordis.patch.yml` |
 | 第三方插件兼容性优先按 `engines.dsh` 判断 | ⚠️ 低风险 | 见 §3.3 |
-| 子路径插件不再读独立 `package.json` | ✅ 无影响 | `cordis.patch.yml` 挂的是包根 `@home-river/dsh-opencode-bridge` |
+| 子路径插件不再读独立 `package.json` | ✅ 无影响 | `cordis.patch.yml` 挂的是包根（当时 `@home-river/dsh-opencode-bridge`，2026-10-19 更名为 `dsh-opencode-cli-bridge`） |
 | 输入区统计扩展拆为 `activity` / `usage`，旧 `stats` 注册 ID 失效 | ✅ 无影响 | 纯 LLM 插件，无 UI 扩展点 |
 | 工具展示移除 `both` 混合模式（仅 native / ptc） | ✅ 无影响 | 未使用 |
 | Agent Team 消息改直投 Inbox、移除 outbox 与重发去重 | ✅ 无影响 | 关注方是 collab-pipeline |

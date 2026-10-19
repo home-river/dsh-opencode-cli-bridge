@@ -5,8 +5,11 @@
 
 ## 一、发布前硬性检查
 
-- [ ] **包名/仓库名定案**后同步三处（有单测守护一致性）：`package.json.name`、`src/client.js` 的模块 id、`cordis.patch.yml` 的 `name:`；
-- [ ] `package.json` 补 `repository` / `homepage` / `bugs` —— **`repository` 必须指回 GitHub 收录仓库**（awesome-dsh-plugin 的 npm 映射靠它自动采集，手写 `npm:` 会被拒）；
+- [x] **包名定案：`dsh-opencode-cli-bridge`**（2026-10-19，裸名；npm 上已有同赛道
+      `dsh-opencode-bridge`（Vikrant-Aleph）与 `dsh-opencode-cli`（chen44041-star），
+      故弃用近似名）——`package.json` / `client.js` 模块 id / `cordis.patch.yml` 三处已同步；
+- [ ] 建 GitHub 仓库（**建议同名 `dsh-opencode-cli-bridge`**）后补 `repository` / `homepage` / `bugs`；
+      仓库根 `README.md`、`LICENSE`、`CHANGELOG.md`、`screenshots.json` 随仓备齐；
 - [ ] 兼容声明：顶层 `engines.dsh`（已写 `">=0.2.1-0 <0.3.0"`）；**不要**把范围写成 caret 单段（`^0.1.7` 归一化为 `>=0.1.7 <0.2.0-0`，跨 minor 必拒），**不要**再叠 `@deepseek-ai/dsh` peer（声明了 `engines.dsh` 时 peer 被忽略，只添 ERESOLVE 麻烦）；
 - [ ] 仓库根具备：`dsh.bundle.patch` 声明 + `cordis.patch.yml`（`- insert: [{id, name}]`）——收录硬性前提，已具备；
 - [ ] README 截图（放自己仓库 `screenshots.json`，1–8 张）。
@@ -15,8 +18,8 @@
 
 ```sh
 npm pack                                  # 先出 tgz 自检 contents
-dsh plugin --profile web add .\home-river-dsh-opencode-bridge-<ver>.tgz   # 干净 profile 冒烟
-npm publish --access public               # scoped 包必须带 --access public
+dsh plugin --profile web add .\dsh-opencode-cli-bridge-<ver>.tgz   # 干净 profile 冒烟
+npm publish                                # 裸名无需 --access public
 git tag v<ver> && git push --tags         # + GitHub Release
 ```
 

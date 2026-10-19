@@ -2,7 +2,7 @@
 
 > 状态：MVP 设计基线；推理端点客户端身份待验证  
 > 版本：0.1.1  
-> 插件包：`@home-river/dsh-opencode-bridge`  
+> 插件包：`dsh-opencode-cli-bridge`（2026-10-19 定名，原 `@home-river/dsh-opencode-bridge`）  
 > Provider ID：`opencode-bridge`
 
 ## 1. 项目目的
