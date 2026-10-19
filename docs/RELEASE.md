@@ -1,7 +1,7 @@
 # 发布与收录操作单（社区发布用）
 
 > 2026-10-19 经社区生态实查整理（来源见文末）。发布时按顺序执行，勾掉 CHANGELOG「发布待办」。
-> **结论与依据**（为什么这么写、坑在哪）见 [`RELEASE-CONCLUSIONS.md`](./RELEASE-CONCLUSIONS.md)。
+> **结论与依据**（为什么这么写、坑在哪）见工作区级 [`docs/RELEASE-CONCLUSIONS.md`](../../docs/RELEASE-CONCLUSIONS.md)——跨项目共享知识，放在工作区根 `docs/`（不入 git）。
 
 ## 一、发布前硬性检查
 
