@@ -11,7 +11,8 @@
 - [x] GitHub 仓库 **`home-river/dsh-opencode-cli-bridge`** 已建（与包名同），
       `repository` / `homepage` / `bugs` 已补——**`repository` 必须指回收录仓库**
       （awesome-dsh-plugin 的 npm 映射靠它自动采集，手写 `npm:` 会被拒）；
-- [ ] 仓库根 `screenshots.json`（1–8 张截图）随首发补充；
+- [x] 仓库根 `screenshots.json` 已声明（`["docs/screenshots/oc-bridge-panel.png"]`，
+      相对路径、1–8 张；市场详情页展示，未声明时市场会从 README 自动抽取）；
 - [ ] 兼容声明：顶层 `engines.dsh`（已写 `">=0.2.1-0 <0.3.0"`）；**不要**把范围写成 caret 单段（`^0.1.7` 归一化为 `>=0.1.7 <0.2.0-0`，跨 minor 必拒），**不要**再叠 `@deepseek-ai/dsh` peer（声明了 `engines.dsh` 时 peer 被忽略，只添 ERESOLVE 麻烦）；
 - [ ] 仓库根具备：`dsh.bundle.patch` 声明 + `cordis.patch.yml`（`- insert: [{id, name}]`）——收录硬性前提，已具备；
 - [ ] README 截图（放自己仓库 `screenshots.json`，1–8 张）。
@@ -34,16 +35,17 @@ git tag v<ver> && git push --tags         # + GitHub Release
    - 新增 `data/plugins/<owner>__<repo>.yml`，字段：
 
    ```yaml
-   url: https://github.com/<owner>/<repo>       # 须与仓库完全一致
-   name: <owner>/<repo>                          # monorepo 子包用 owner/repo#subname
-   category: model                               # 枚举二选一：model / tools（按最终定位）
-   description.en: "Bridge DSH to OpenCode-compatible models via the local OpenCode CLI."   # 必填、句号结尾
-   description.zh: "通过本机 OpenCode CLI 在 DSH 中使用 OpenCode 兼容模型。"                  # 可选
-   # tarball: https://github.com/<owner>/<repo>/releases/download/v<ver>/<name>-<ver>.tgz   # 可选
+   url: https://github.com/home-river/dsh-opencode-cli-bridge   # 须与仓库完全一致
+   name: home-river/dsh-opencode-cli-bridge
+   category: model
+   description:
+     en: 'Bridge DSH to OpenCode-compatible models via the local OpenCode CLI: native LlmAdapter passthrough, persistent OC sessions with cross-turn tool results, tool mirroring, and a CLI environment check panel.'
+     zh: '经本机 OpenCode CLI 在 DSH 中使用 OpenCode 兼容模型：原生 LlmAdapter 透传、OC 会话持久续接（工具结果跨轮可见）、工具镜像回传、CLI 环境检测面板。'
    ```
 
+   - ⚠️ 描述含 `: `（冒号+空格）**必须整体加引号**，否则 YAML 解析成嵌套键；描述只写功能、无营销词，且**必须属实**（维护者对着源码逐句核对，夸大是被打回的主因）；
    - 一个 PR 最多 3 条；README（awesome 列表的）由脚本生成、不要手改；
-   - 硬性前提：仓库满 1 天、真实可运行代码、描述属实无营销词；CI 校验格式，维护者人工读源码核对描述。
+   - 硬性前提：**仓库满 1 天**（CI 自动核查建仓时间——本仓 2026-10-19 创建，**2026-10-20 起可提 PR**）、真实可运行代码、`dsh-plugin` topic 已挂；CI 格式通过后维护者人工读源码核对描述。
 3. 可选：dshbase.com 提交拿「已验证」徽章（CI 干净 profile 实测 `dsh plugin add`）。
 
 ## 四、README 安装兜底写法（已内置）

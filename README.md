@@ -40,6 +40,8 @@ dsh plugin --profile web add ./dsh-opencode-cli-bridge-0.1.0.tgz
 
 ## 使用
 
+![OC-bridge 面板：顶部 CLI 环境状态卡 + 模型暴露勾选](docs/screenshots/oc-bridge-panel.png)
+
 - **模型选择器**：直接选 `opencode-bridge` 下的模型对话；
 - **OC-bridge 面板**（左栏「插件」卡旁）：顶部是 CLI 环境状态卡；下方勾选要暴露到选择器的模型，保存后下次打开选择器生效；
 - **取消**：DSH 侧停止生成即杀掉 CLI 进程树，不留孤儿进程。

@@ -31,5 +31,5 @@
       `repository` / `homepage` / `bugs` 字段
 - [x] DSH 版本兼容声明：顶层 `engines.dsh: ">=0.2.1-0 <0.3.0"`（查证结论：宿主只认顶层
       `engines.dsh`、声明后忽略 peer；caret 跨 minor 必拒；`dsh.plugin.json` 属已移除旧机制，无需准备）
-- [ ] README 截图 + 仓库 `screenshots.json`（市场收录用）
+- [x] README 截图 + 仓库 `screenshots.json`（已含脱敏处理的 OC-bridge 面板图）
 - [ ] 市场收录：GitHub topic `dsh-plugin` + 向 awesome-dsh-plugin 提 YAML 条目 PR
