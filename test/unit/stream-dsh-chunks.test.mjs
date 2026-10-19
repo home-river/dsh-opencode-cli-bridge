@@ -69,15 +69,16 @@ test("fake multi-step -> 只有一条 usage+finish，reason 取最后（stop）"
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("fake tool-only -> 工具进度可见 + 零文本保险 + finish(stop)（解禁批）", async () => {
+test("fake tool-only -> 工具镜像可见 + 零文本保险 + finish(stop)（透传桥回传层）", async () => {
   const { dir, opts } = baseOpts("tool-only");
   try {
     const chunks = await collect(opts);
     const starts = chunks.filter((c) => c.type === "block-start");
-    assert.equal(starts.length, 2, "进度块 + 保险文本块");
-    assert.ok(starts.every((s) => s.blockType === "text"));
+    assert.equal(starts.length, 2, "工具镜像块 + 保险文本块");
+    assert.deepEqual(starts.map((s) => s.blockType), ["reasoning", "text"]);
+    const mirror = chunks.filter((c) => c.type === "reasoning-delta").map((c) => c.text).join("");
     const body = chunks.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
-    assert.ok(body.includes("🔧 bash"), body);
+    assert.ok(mirror.includes("🔧 bash") && mirror.includes("a.txt"), mirror);
     assert.ok(body.includes("执行了工具（bash）但没有产生文本输出"), body);
     assert.deepEqual(chunks.at(-1).reason, { kind: "stop" }, "无 tool-call 块不得收尾于 tool-calls");
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -92,9 +93,11 @@ test("超时击杀不得被零文本保险吞掉（ISSUE-009）：tool-only-hang
   });
   try {
     const chunks = await collect(opts);
+    const mirror = chunks.filter((c) => c.type === "reasoning-delta").map((c) => c.text).join("");
     const body = chunks.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
-    assert.ok(body.includes("🔧 bash"), body);
-    assert.ok(!body.includes("没有产生文本输出"), `超时不得伪装成零文本提示：${body}`);
+    assert.ok(mirror.includes("🔧 bash"), mirror);
+    assert.ok(!body.includes("没有产生文本输出") && !mirror.includes("没有产生文本输出"),
+      `超时不得伪装成零文本提示：${body}`);
     const finish = chunks.at(-1);
     assert.equal(finish.type, "finish");
     assert.equal(finish.reason.kind, "error", "被击杀的未完成回合必须如实收尾为 error");

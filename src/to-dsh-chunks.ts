@@ -24,6 +24,21 @@ export const DEFAULT_PACE_MS = 22;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** 工具镜像截断上限：input 摘要 200 字符、output 2000 字符（回传面可控）。 */
+const TOOL_INPUT_MAX = 200;
+const TOOL_OUTPUT_MAX = 2000;
+
+function clipText(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function formatInputSummary(input: unknown): string {
+  if (input === undefined || input === null) return "";
+  const s = typeof input === "string" ? input : JSON.stringify(input);
+  if (s === "" || s === "{}") return "";
+  return ` ${clipText(s, TOOL_INPUT_MAX)}`;
+}
+
 const FAILURE_MESSAGES: Record<ErrorCode, string> = {
   CLI_NOT_FOUND: "OpenCode CLI not found",
   CLI_START_FAILED: "OpenCode CLI failed to start",
@@ -88,7 +103,8 @@ export class DshChunkConverter {
   #ended = false;
   #sawText = false;
   #toolNames: string[] = [];
-  #seenToolCalls = new Set<string>();
+  #toolProgress = new Set<string>();
+  #toolMirrored = new Set<string>();
 
   constructor(options: DshChunkOptions = {}) {
     const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -104,13 +120,20 @@ export class DshChunkConverter {
       case "start":
         return [];
       case "tool": {
-        // 解禁批 #2：OC 自有工具的执行事件回流为可见进度文本（🔧 行）。
-        // 刻意不产 tool-call 块——那会让 DSH 拾起自己的工具循环（工具面归属 OC，这里只透明化）。
+        // 透传桥回传层：工具镜像借 reasoning 块的皮（tool-call 块会触发 DSH 自己的工具循环，
+        // 同名工具双重执行；见计划 2026-10-19-oc-session-passthrough §0.2 证据）。
+        // 两态语义：进行中（无终态）出一行进度；终态（completed/error/tool_result）出完整镜像，
+        // 同一 callID 各至多一次（先进度后终态时，终态只补结果行）。
         const raw = (event.raw ?? {}) as {
           type?: unknown;
           tool?: unknown;
           callID?: unknown;
-          part?: { tool?: unknown; callID?: unknown };
+          part?: {
+            tool?: unknown;
+            callID?: unknown;
+            output?: unknown;
+            state?: { status?: unknown; input?: unknown; output?: unknown };
+          };
         };
         const name =
           typeof raw.part?.tool === "string" ? raw.part.tool
@@ -119,23 +142,37 @@ export class DshChunkConverter {
           typeof raw.part?.callID === "string" ? raw.part.callID
             : typeof raw.callID === "string" ? raw.callID : "";
         if (name !== "" && !this.#toolNames.includes(name)) this.#toolNames.push(name);
-        if (raw.type === "tool_result") return []; // 结果事件不重复出进度
-        if (callId !== "") {
-          if (this.#seenToolCalls.has(callId)) return [];
-          this.#seenToolCalls.add(callId);
+        const state = raw.part?.state;
+        const status =
+          typeof state?.status === "string" ? state.status
+            : raw.type === "tool_result" ? "completed" : "";
+        const isFinal = raw.type === "tool_result" || status === "completed" || status === "error";
+        const head = `🔧 ${name === "" ? "tool" : name}${formatInputSummary(state?.input)}`;
+        const outputRaw =
+          typeof state?.output === "string" ? state.output
+            : typeof raw.part?.output === "string" ? raw.part.output
+              : state?.output === undefined ? "" : JSON.stringify(state.output);
+        const statusLabel = status === "" ? "completed" : status;
+        const tail = outputRaw === ""
+          ? `└─ ${statusLabel}`
+          : `└─ ${statusLabel} | ${clipText(outputRaw, TOOL_OUTPUT_MAX)}`;
+
+        if (isFinal) {
+          if (callId !== "" && this.#toolMirrored.has(callId)) return [];
+          if (callId !== "") this.#toolMirrored.add(callId);
+          const priorProgress = callId !== "" && this.#toolProgress.has(callId);
+          return this.#emitReasoning(priorProgress ? tail : `${head}\n${tail}`);
         }
-        const line = `🔧 ${name === "" ? "tool" : name}`;
-        const index = this.#index++;
-        return [
-          { type: "block-start", index, blockType: "text" },
-          { type: "text-delta", index, text: line },
-          { type: "block-end", index, block: { type: "text", text: line } },
-        ];
+        if (callId !== "" && (this.#toolProgress.has(callId) || this.#toolMirrored.has(callId))) return [];
+        if (callId !== "") this.#toolProgress.add(callId);
+        return this.#emitReasoning(head);
       }
-      case "reasoning":
-        // Task 4（计划 2026-10-19-oc-session-passthrough）产出 reasoning 块；
-        // 此处保持"暂不透传"现状语义，由 Task 4 的红灯测试驱动替换。
-        return [];
+      case "reasoning": {
+        // 透传桥回传层：OC 思考原生映射为 DSH reasoning 块（折叠/收起呈现）。
+        // 思考不算正文：不置 #sawText，零文本保险语义不受影响。
+        if (event.text === "") return [];
+        return this.#emitReasoning(event.text);
+      }
       case "text": {
         if (event.text === "") return [];
         this.#sawText = true;
@@ -158,6 +195,19 @@ export class DshChunkConverter {
         this.#finish = { kind: "error", failure: toFailure(event.code) };
         return [];
     }
+  }
+
+  /** 产出一个 reasoning 块（思考/工具镜像共用载体）。 */
+  #emitReasoning(text: string): DshStreamChunk[] {
+    const index = this.#index++;
+    const chunks: DshStreamChunk[] = [
+      { type: "block-start", index, blockType: "reasoning" },
+    ];
+    for (const piece of chunkText(text, this.#chunkSize)) {
+      chunks.push({ type: "reasoning-delta", index, text: piece });
+    }
+    chunks.push({ type: "block-end", index, block: { type: "reasoning", text } });
+    return chunks;
   }
 
   /** 源流自然结束的收尾；幂等。无终端记录时兜底 error(PROTOCOL_ERROR)。 */

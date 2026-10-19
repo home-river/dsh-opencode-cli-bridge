@@ -173,7 +173,8 @@ test("unknown-events -> 全部诊断，不抛错", async () => {
     const r = await runCliBridge({ ...opts, onDiagnostic: (d) => diags.push(d) });
     assert.equal(r.text, "AFTER_UNKNOWN");
     assert.equal(r.finishReason, "stop");
-    assert.equal(diags.filter((d) => d.kind === "unknown-event").length, 2);
+    // brand_new_event 仍是未知事件；reasoning 自透传桥回传层起是一等事件（不再算 unknown）
+    assert.equal(diags.filter((d) => d.kind === "unknown-event").length, 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -60,13 +60,13 @@ test("空串 text -> 无输出", () => {
   assert.deepEqual(c.push(textEvent("")), []);
 });
 
-test("start 事件 -> 无输出；tool 事件（无名）-> 可见进度块兜名 tool", () => {
+test("start 事件 -> 无输出；tool 事件（无名）-> 可见进度镜像兜名 tool", () => {
   const c = new DshChunkConverter();
   assert.deepEqual(c.push({ kind: "start", sessionId: "ses_1" }), []);
   assert.deepEqual(c.push({ kind: "tool", sessionId: "ses_1", raw: {} }), [
-    { type: "block-start", index: 0, blockType: "text" },
-    { type: "text-delta", index: 0, text: "🔧 tool" },
-    { type: "block-end", index: 0, block: { type: "text", text: "🔧 tool" } },
+    { type: "block-start", index: 0, blockType: "reasoning" },
+    { type: "reasoning-delta", index: 0, text: "🔧 tool" },
+    { type: "block-end", index: 0, block: { type: "reasoning", text: "🔧 tool" } },
   ]);
 });
 
@@ -117,16 +117,17 @@ test("finish(max-tokens) / finish(tool-calls) 映射", () => {
   assert.deepEqual(b.end()[1].reason, { kind: "tool-calls" });
 });
 
-test("工具事件回流：tool_use 产出可见进度块（🔧 行），callID 去重、tool_result 不重复（解禁批 #2）", () => {
+test("工具镜像回流：callID 去重、tool_result 补结果行、不裸产 text 进度（透传桥回传层）", () => {
   const c = new DshChunkConverter({ chunkSize: 1000 });
   const out = [
     ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } }),
     ...c.push({ kind: "tool", sessionId: "ses_1", raw: { tool: "bash", callID: "c1" } }),
-    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { type: "tool_result", part: { tool: "read", callID: "c3" } } }),
+    ...c.push({ kind: "tool", sessionId: "ses_1", raw: { type: "tool_result", part: { tool: "read", callID: "c3", output: "r3" } } }),
     ...c.push({ kind: "tool", sessionId: "ses_1", raw: { type: "tool_use", part: { tool: "read", callID: "c3x" } } }),
   ];
-  const texts = out.filter((x) => x.type === "text-delta").map((x) => x.text);
-  assert.deepEqual(texts, ["🔧 bash", "🔧 read"]);
+  const texts = out.filter((x) => x.type === "reasoning-delta").map((x) => x.text);
+  assert.deepEqual(texts, ["🔧 bash", "🔧 read\n└─ completed | r3", "🔧 read"]);
+  assert.ok(!out.some((x) => x.type === "text-delta"), "工具镜像不得裸产 text 块");
   assert.equal(out[0].type, "block-start");
   assert.equal(out.at(-1).type, "block-end");
 });
@@ -141,7 +142,8 @@ test("零文本保险：工具轮零正文 -> 进度块 + 保险文案（含工�
     ...c.end(),
   ];
   const body = out.filter((x) => x.type === "text-delta").map((x) => x.text).join("");
-  assert.ok(body.includes("🔧 bash") && body.includes("🔧 read"), body);
+  const mirror = out.filter((x) => x.type === "reasoning-delta").map((x) => x.text).join("\n");
+  assert.ok(mirror.includes("🔧 bash") && mirror.includes("🔧 read"), mirror);
   assert.ok(body.includes("执行了工具（bash、read）但没有产生文本输出"), body);
   assert.equal(out.at(-2).type, "usage");
   assert.deepEqual(out.at(-1).reason, { kind: "stop" }, "无 tool-call 块时不得收尾于 tool-calls");
@@ -166,7 +168,9 @@ test("零文本保险不误伤：有正文的工具轮照常透传（进度块�
     ...c.end(),
   ];
   const blocks = out.filter((x) => x.type === "text-delta").map((x) => x.text);
-  assert.deepEqual(blocks, ["这是正文", "🔧 read"], "正文不被污染，进度独立成块");
+  assert.deepEqual(blocks, ["这是正文"], "正文不被污染");
+  const mirror = out.filter((x) => x.type === "reasoning-delta").map((x) => x.text);
+  assert.deepEqual(mirror, ["🔧 read"], "工具镜像独立成 reasoning 块");
   assert.ok(!blocks.join("").includes("本轮"), "有正文时不合成保险文案");
   assert.deepEqual(out.at(-1).reason, { kind: "tool-calls" });
 });
@@ -275,4 +279,43 @@ test("toDshChunks: 非 CliBridge 异常原样抛出", async () => {
   await assert.rejects(async () => {
     for await (const _ of toDshChunks(source())) void _;
   }, TypeError);
+});
+
+test("reasoning 事件 -> reasoning 块（reasoning-delta 序列）", () => {
+  const c = new DshChunkConverter({ chunkSize: 64 });
+  const out = [
+    ...c.push({ kind: "reasoning", sessionId: "s", text: "思考一二三" }),
+    ...c.end(),
+  ];
+  assert.equal(out[0].type, "block-start");
+  assert.equal(out[0].blockType, "reasoning");
+  assert.equal(out.filter((x) => x.type === "reasoning-delta").map((x) => x.text).join(""), "思考一二三");
+});
+
+test("工具镜像：tool_use 完成态 -> reasoning 皮镜像块（含工具名/输出），不再裸产 🔧 行", () => {
+  const c = new DshChunkConverter({ chunkSize: 64 });
+  const out = [
+    ...c.push({
+      kind: "tool", sessionId: "s",
+      raw: { type: "tool_use", part: { tool: "bash", callID: "c1",
+        state: { status: "completed", input: { command: "ls" }, output: "a.txt" } } },
+    }),
+    ...c.end(),
+  ];
+  const body = out.filter((x) => x.type === "reasoning-delta").map((x) => x.text).join("");
+  assert.ok(body.includes("🔧 bash"), body);
+  assert.ok(body.includes("a.txt"), body);
+  // 不得再出现旧的独立文本进度块
+  assert.ok(!out.some((x) => x.type === "text-delta" && x.text.includes("🔧")));
+});
+
+test("工具镜像输出截断至 2000 字符", () => {
+  const c = new DshChunkConverter();
+  const out = c.push({
+    kind: "tool", sessionId: "s",
+    raw: { type: "tool_use", part: { tool: "bash", callID: "c1",
+      state: { status: "completed", input: {}, output: "x".repeat(5000) } } },
+  });
+  const body = out.filter((x) => x.type === "reasoning-delta").map((x) => x.text).join("");
+  assert.ok(body.length <= 2200, String(body.length));
 });
