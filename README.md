@@ -1,5 +1,7 @@
 # dsh-opencode-cli-bridge
 
+[![ci](https://github.com/home-river/dsh-opencode-cli-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/home-river/dsh-opencode-cli-bridge/actions/workflows/ci.yml)
+
 > 在 DeepSeek Harness 里通过**本机 OpenCode CLI** 使用 OpenCode 兼容模型——原生 `LlmAdapter` 桥接，无 sidecar、无额外进程、无 API Key。
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 插件 · MIT License
