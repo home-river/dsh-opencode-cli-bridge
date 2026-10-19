@@ -37,8 +37,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node scripts/build-client.mjs && node --test test/unit/*.test.mjs",
-    "test:integration": "tsc -p tsconfig.json && node --test test/integration/*.test.mjs"
+    "test": "tsc -p tsconfig.json && node scripts/build-client.mjs && node scripts/run-tests.mjs test/unit",
+    "test:integration": "tsc -p tsconfig.json && node scripts/run-tests.mjs test/integration"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
