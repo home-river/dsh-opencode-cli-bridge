@@ -134,3 +134,23 @@ RUN("R11 连续 5 轮进程归零（按 CLI 进程树映像名断言）", async 
   }
   for (const pid of residual) assert.fail(`残留进程 pid=${pid}`);
 });
+
+RUN("R12 多轮工具上下文：第二轮可见第一轮的工具输出", async () => {
+  const dir = mkws();
+  try {
+    // 第一轮：诱导工具调用（列目录），工具会看到 alpha.txt / beta.md
+    const a = await runCliBridge({
+      workspace: dir, model: MODEL, timeouts: SLOW,
+      prompt: "请用工具列出当前目录下的文件，然后只回复：已列出",
+    });
+    assert.equal(a.finishReason, "stop");
+    // 第二轮：追问工具输出内容 —— 只有 OC 会话账本里带着 tool 结果才答得出
+    const b = await runCliBridge({
+      workspace: dir, model: MODEL, timeouts: SLOW,
+      sessionId: a.sessionId,
+      prompt: "你上一轮列目录的输出里出现了哪些文件名？只返回文件名，逗号分隔",
+    });
+    assert.ok(b.text.includes("alpha.txt"), b.text);
+    assert.ok(b.text.includes("beta.md"), b.text);
+  } finally { await cleanup(dir); }
+});

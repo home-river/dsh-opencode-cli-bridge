@@ -36,6 +36,15 @@ MVP 目标是：
 
 完整设计与验收条件见 [`docs/GOALS.md`](./docs/GOALS.md)。
 
+## 会话透传（DSH ↔ OC 会话 1:1 绑定，2026-10-19）
+
+插件的本职是**透传桥**：DSH 消息增量送入持久绑定的 OC 会话，OC 的输出（正文/思考/工具）全量回传 DSH。
+
+- **绑定**：`~/.dsh-opencode-bridge/sessions.json` 记录 `DSH 会话 → OC 会话（ses_*）+ 已送达消息水位`；续轮经 `opencode run --session` 续接 OC 自有历史——**工具结果跨轮可见**（模型能回答"你上一轮工具输出了什么"）。
+- **增量**：只发新消息（`buildDeltaPrompt`）；system 内容变化时才随发。历史不再全量压平重发。
+- **回传**：正文 → `text` 块；思考 → 原生 `reasoning` 块；工具调用/结果 → 结构化镜像（`🔧 tool input` / `└─ status | output`，借 `reasoning` 块承载——`tool-call` 块会触发 DSH 自己的工具循环造成双重执行，故刻意不用）。呈现复用 DSH 的折叠/收起机制。
+- **回退**：消息数小于账本（编辑/分支）或 OC 会话失效（`SESSION_INVALID`）时，自动重建会话并全量重放一次。
+
 ## 模型展示筛选（可选配置）
 
 `opencode models` 会列出全部模型（含 `opencode-go/*`），选择器里太长；插件支持按需筛选展示。配置文件 `~/.dsh-opencode-bridge/config.json`：
