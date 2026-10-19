@@ -103,6 +103,7 @@ async function executeCall(opts: CliBridgeOptions): Promise<ExecuteResult> {
   const mapper = new OpenCodeEventMapper();
   const events: CliBridgeEvent[] = [];
   let sawAnyLine = false;
+  let sessionIdFired = false;
 
   const outcome = await runCliProcess({
     command: discovered.command,
@@ -119,6 +120,10 @@ async function executeCall(opts: CliBridgeOptions): Promise<ExecuteResult> {
         return;
       }
       const r = mapper.push(parsed.value);
+      if (!sessionIdFired && mapper.sessionId !== "") {
+        sessionIdFired = true;
+        try { opts.onSessionId?.(mapper.sessionId); } catch { /* 绑定回调不得影响主流程 */ }
+      }
       for (const d of r.diagnostics) emitDiag(d);
       for (const e of r.events) events.push(e);
     },

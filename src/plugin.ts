@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { OpencodeBridgeAdapter } from "./adapter.js";
+import { SessionStore } from "./session-store.js";
 import { loadCatalog as loadModelCatalog } from "./catalog-store.js";
 import { DEFAULT_CONFIG_PATH, loadModelFilterConfig, selectVisibleModels } from "./model-filter.js";
 import { buildModelSettingsRoutes } from "./model-settings.js";
@@ -90,6 +91,7 @@ export function apply(ctx: PluginContext): (() => void) & { replace?: (providers
   safeAppend("diagnostics.log", `${new Date().toISOString()} ${JSON.stringify({ code: "BRIDGE_LOADED", build: BRIDGE_BUILD })}\n`);
   const adapter = new OpencodeBridgeAdapter({
     resolveWorkspace: (sessionId) => resolveWorkspace(ctx, sessionId),
+    sessionStore: new SessionStore(join(LOG_DIR, "sessions.json")),
     listModelEntries: createModelLister({
       onDiagnostic: (message) => {
         safeAppend("diagnostics.log", `${new Date().toISOString()} ${JSON.stringify({ code: "MODEL_FILTER_CONFIG", message }).slice(0, 2000)}\n`);
@@ -102,7 +104,7 @@ export function apply(ctx: PluginContext): (() => void) & { replace?: (providers
       const ts = new Date().toISOString();
       safeAppend(
         "requests.log",
-        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} effort=${info.reasoningEffort ?? "-"} promptChars=${info.prompt.length}\n`,
+        `${ts} start model=${info.model} workspace=${info.workspace || "(empty)"} sessionId=${info.sessionId ?? "(none)"} ocSession=${info.ocSessionId ?? "(new)"} effort=${info.reasoningEffort ?? "-"} promptChars=${info.prompt.length}\n`,
       );
       if (info.prompt !== "") {
         try {

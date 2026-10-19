@@ -87,6 +87,8 @@ export interface CliBridgeOptions {
   command?: string;
   extraArgs?: string[];
   onDiagnostic?: (d: CliDiagnostic) => void;
+  /** OC 自有会话 id（ses_*）首次出现在事件流时回调一次（透传桥绑定层用）。 */
+  onSessionId?: (sessionId: string) => void;
 }
 
 export interface CliBridgeResult {

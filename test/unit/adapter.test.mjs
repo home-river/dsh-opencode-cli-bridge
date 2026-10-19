@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { OpencodeBridgeAdapter } from "../../lib/adapter.js";
 import { createModelLister } from "../../lib/plugin.js";
+import { SessionStore } from "../../lib/session-store.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE = resolve(here, "..", "fixtures", "fake-opencode.mjs");
@@ -16,6 +17,7 @@ function makeAdapter(over = {}) {
   const deps = {
     resolveWorkspace: (sessionId) => { deps.seenSessionId = sessionId; return dir; },
     listModelEntries: async () => [{ id: "opencode/mimo-v2.6-flash-free", name: "MiMo Flash" }],
+    sessionStore: new SessionStore(join(dir, "sessions.json")),
     cli: {
       command: process.execPath,
       extraArgs: [FAKE, "mode:normal"],
@@ -277,8 +279,7 @@ test("prepareCall 返回 model + stream，stream 行为一致", async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("listModels 出口接模型筛选：默认隐藏 opencode-go/*，被过滤模型仍可宽松 resolve", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "ocbridge-filter-"));
+test("listModels 出口接模型筛选：默认隐藏 opencode-go/*，被过滤模型仍可宽松 resolve", async () => {  const dir = mkdtempSync(join(tmpdir(), "ocbridge-filter-"));
   const configPath = join(dir, "config.json");
   writeFileSync(configPath, JSON.stringify({ models: { exclude: ["opencode/gpt-5"] } }), "utf8");
   const catalog = [
@@ -305,5 +306,89 @@ test("listModels 出口接模型筛选：默认隐藏 opencode-go/*，被过滤�
       inputModalities: ["text"],
     });
     assert.ok(hidden.reasoning.efforts.length > 0, "被过滤模型的宽松 resolve 也声明 reasoning 档位");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("绑定复用：第二轮把 OC 会话 id 经 --session 传给 CLI，且只发增量", async () => {
+  const { dir, adapter, deps } = makeAdapter({
+    cli: {
+      command: process.execPath,
+      extraArgs: [FAKE, "mode:session-echo"],
+      timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 5000, totalMs: 15000, shutdownMs: 1000 },
+    },
+  });
+  try {
+    const run = async (list) => {
+      const out = [];
+      for await (const c of adapter.stream({
+        provider: "opencode-bridge", model: "opencode/mimo-v2.6-flash-free",
+        messages: list, sessionId: "dsh-s1",
+      })) out.push(c);
+      return out.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
+    };
+    const t1 = await run([{ role: "user", content: [{ type: "text", text: "msg-1" }] }]);
+    assert.equal(t1, "SESSION=null", "首轮无绑定，不得带 --session");
+    assert.equal(deps.sessionStore.get("dsh-s1").sentCount, 1);
+    assert.equal(deps.sessionStore.get("dsh-s1").ocSessionId, "ses_fake_0001");
+    const t2 = await run([
+      { role: "user", content: [{ type: "text", text: "msg-1" }] },
+      { role: "assistant", content: [{ type: "text", text: "a" }] },
+      { role: "user", content: [{ type: "text", text: "msg-2" }] },
+    ]);
+    assert.equal(t2, "SESSION=ses_fake_0001", "第二轮续接 OC 会话");
+    assert.equal(deps.sessionStore.get("dsh-s1").sentCount, 3);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("漂移回退：消息数小于账本 -> 丢绑定全量重放（不带 --session）", async () => {
+  const { dir, adapter, deps } = makeAdapter({
+    cli: {
+      command: process.execPath,
+      extraArgs: [FAKE, "mode:session-echo"],
+      timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 5000, totalMs: 15000, shutdownMs: 1000 },
+    },
+  });
+  try {
+    deps.sessionStore.save({
+      dshSessionId: "dsh-s2", ocSessionId: "ses_old", workspace: dir,
+      sentCount: 99, systemHash: "", updatedAt: "",
+    });
+    const out = [];
+    for await (const c of adapter.stream({
+      provider: "opencode-bridge", model: "opencode/mimo-v2.6-flash-free",
+      messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }], sessionId: "dsh-s2",
+    })) out.push(c);
+    const text = out.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
+    assert.equal(text, "SESSION=null", "漂移后不得再带旧 --session");
+    assert.equal(deps.sessionStore.get("dsh-s2").ocSessionId, "ses_fake_0001", "重放后按新会话重建绑定");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("会话失效：SESSION_INVALID -> 清除绑定并全量重放一次（仍失败则如实 error）", async () => {
+  const { dir, adapter, deps } = makeAdapter({
+    cli: {
+      command: process.execPath,
+      extraArgs: [FAKE, "mode:session-not-found"],
+      timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 5000, totalMs: 15000, shutdownMs: 1000 },
+    },
+  });
+  try {
+    deps.sessionStore.save({
+      dshSessionId: "dsh-s3", ocSessionId: "ses_dead", workspace: dir,
+      sentCount: 1, systemHash: "", updatedAt: "",
+    });
+    const out = [];
+    for await (const c of adapter.stream({
+      provider: "opencode-bridge", model: "opencode/mimo-v2.6-flash-free",
+      messages: [
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+        { role: "user", content: [{ type: "text", text: "again" }] },
+      ],
+      sessionId: "dsh-s3",
+    })) out.push(c);
+    assert.equal(deps.sessionStore.get("dsh-s3"), undefined, "失效绑定应被清除");
+    const finish = out.at(-1);
+    assert.equal(finish.type, "finish");
+    assert.equal(finish.reason.kind, "error", "重放仍失败时如实收尾为 error");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

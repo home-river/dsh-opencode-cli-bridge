@@ -1,10 +1,11 @@
 import type { DshImageAttachmentRef, DshImageRequestTarget, DshResolvedRetryPolicy, DshStreamChunk, DshTokenUsage } from "./dsh-types.js";
 import type { CliDiagnostic, CliTimeouts } from "./types.js";
-import { buildPrompt } from "./prompt.js";
+import { buildPrompt, buildDeltaPrompt } from "./prompt.js";
 import type { PromptMessage } from "./prompt.js";
 import { toModelInfo, modelReasoningInfo, variantForEffort } from "./catalog.js";
 import type { CatalogModel, ResolvedModelInfo } from "./catalog.js";
 import { streamDshChunks } from "./cli-bridge.js";
+import type { SessionStore } from "./session-store.js";
 
 export interface AdapterGenerateOptions {
   provider: string;
@@ -20,10 +21,12 @@ export interface AdapterGenerateOptions {
 export interface OpencodeBridgeDeps {
   resolveWorkspace: (sessionId?: string) => string;
   listModelEntries: () => Promise<readonly CatalogModel[]>;
+  /** 会话绑定账本（1:1 透传桥）：DSH 会话 ↔ OC 会话 + 已送达消息水位。 */
+  sessionStore: SessionStore;
   cli?: { command?: string; extraArgs?: string[]; timeouts?: Partial<CliTimeouts> };
   onDiagnostic?: (d: CliDiagnostic) => void;
   /** 取证钩子：请求开始时拿到完整 prompt（调试用，宿主可落盘）；不得抛异常影响主流程。 */
-  onRequestStart?: (info: { prompt: string; model: string; workspace: string; sessionId?: string; reasoningEffort?: string }) => void;
+  onRequestStart?: (info: { prompt: string; model: string; workspace: string; sessionId?: string; reasoningEffort?: string; ocSessionId?: string }) => void;
   /** 取证钩子：请求结束时拿到终态摘要。 */
   onRequestEnd?: (info: {
     model: string;
@@ -120,33 +123,103 @@ export class OpencodeBridgeAdapter {
   }
 
   stream(options: AdapterGenerateOptions): AsyncIterable<DshStreamChunk> {
-    const prompt = buildPrompt({ system: options.system, messages: options.messages });
-    const empty = prompt === "";
-    const workspace = empty ? "" : this.#deps.resolveWorkspace(options.sessionId);
+    return this.#wrapSummary(this.#runTurn(options, true), options.model);
+  }
+
+  /**
+   * 一轮透传调度（计划 2026-10-19-oc-session-passthrough 语义七条）：
+   * 1) 查绑定；2) 漂移检测（消息数 < 账本 → 丢绑定全量重放）；3) 增量构建（无新消息时重发末条）；
+   * 4) `--session` 续接；5) 首个 OC 会话 id 到达时推进账本；6) 会话失效回退一次（重建+全量重放）。
+   */
+  async *#runTurn(options: AdapterGenerateOptions, allowResync: boolean): AsyncIterable<DshStreamChunk> {
+    const deps = this.#deps;
+    const dshId = options.sessionId ?? "";
+    const store = deps.sessionStore;
+    let binding = store.get(dshId);
+    if (binding !== undefined && options.messages.length < binding.sentCount) {
+      store.delete(dshId);
+      binding = undefined;
+    }
+    const delta = buildDeltaPrompt({
+      system: options.system,
+      messages: options.messages,
+      sentCount: binding?.sentCount ?? 0,
+      systemHash: binding?.systemHash ?? "",
+    });
+    const prompt = delta.text !== ""
+      ? delta.text
+      : (binding !== undefined ? buildPrompt({ messages: options.messages.slice(-1) }) : "");
+    const workspace = prompt === "" ? "" : deps.resolveWorkspace(options.sessionId);
     try {
-      this.#deps.onRequestStart?.({
+      deps.onRequestStart?.({
         prompt,
         model: options.model,
         workspace,
         sessionId: options.sessionId,
         reasoningEffort: options.reasoningEffort,
+        ocSessionId: binding?.ocSessionId,
       });
     } catch { /* 取证钩子不得影响主流程 */ }
-    const inner: AsyncIterable<DshStreamChunk> = empty
-      ? errorFinishStream("PROMPT_FAILED", "Empty request")
-      : streamDshChunks(
-          {
-            workspace,
-            model: options.model,
-            prompt,
-            variant: variantForEffort(options.reasoningEffort),
-            signal: options.signal,
-            onDiagnostic: this.#deps.onDiagnostic,
-            ...this.#deps.cli,
-          },
-          {},
-        );
-    return this.#wrapSummary(inner, options.model);
+    if (prompt === "") {
+      yield* errorFinishStream("PROMPT_FAILED", "Empty request");
+      return;
+    }
+
+    let advanced = false;
+    const advance = (ocSessionId: string): void => {
+      if (advanced || ocSessionId === "") return;
+      advanced = true;
+      store.save({
+        dshSessionId: dshId,
+        ocSessionId,
+        workspace,
+        sentCount: delta.nextSentCount,
+        systemHash: delta.nextSystemHash,
+        updatedAt: new Date().toISOString(),
+      });
+    };
+    let sessionLost = false;
+    const onDiag = (d: CliDiagnostic): void => {
+      if (d.kind === "stderr" && d.chunk.includes("Session not found")) sessionLost = true;
+      try { deps.onDiagnostic?.(d); } catch { /* 诊断回调不影响主流程 */ }
+    };
+
+    const inner = streamDshChunks(
+      {
+        workspace,
+        model: options.model,
+        prompt,
+        variant: variantForEffort(options.reasoningEffort),
+        sessionId: binding?.ocSessionId,
+        signal: options.signal,
+        onSessionId: advance,
+        onDiagnostic: onDiag,
+        ...deps.cli,
+      },
+      {},
+    );
+    // usage/finish 尾巴缓存到最后再决定：会话失效时吞掉本次终态、换新会话全量重放一次
+    const tail: DshStreamChunk[] = [];
+    for await (const chunk of inner) {
+      if (chunk.type === "usage" || chunk.type === "finish") {
+        tail.push(chunk);
+        continue;
+      }
+      yield chunk;
+    }
+    const lastFinish = tail.find((c) => c.type === "finish");
+    const invalid = sessionLost || (
+      lastFinish?.type === "finish"
+      && lastFinish.reason.kind === "error"
+      && "failure" in lastFinish.reason
+      && lastFinish.reason.failure.code === "SESSION_INVALID"
+    );
+    if (allowResync && invalid && options.messages.length > 0) {
+      store.delete(dshId);
+      yield* this.#runTurn(options, false);
+      return;
+    }
+    for (const chunk of tail) yield chunk;
   }
 
   /** 取证：统计正文字符数与终态，请求收尾时经 onRequestEnd 回调（钩子异常不影响流）。 */
