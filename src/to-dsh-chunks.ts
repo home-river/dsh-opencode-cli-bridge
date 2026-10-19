@@ -132,6 +132,10 @@ export class DshChunkConverter {
           { type: "block-end", index, block: { type: "text", text: line } },
         ];
       }
+      case "reasoning":
+        // Task 4（计划 2026-10-19-oc-session-passthrough）产出 reasoning 块；
+        // 此处保持"暂不透传"现状语义，由 Task 4 的红灯测试驱动替换。
+        return [];
       case "text": {
         if (event.text === "") return [];
         this.#sawText = true;

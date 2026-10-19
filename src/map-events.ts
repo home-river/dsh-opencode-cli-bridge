@@ -109,6 +109,12 @@ export class OpenCodeEventMapper {
         break;
       }
 
+      case "reasoning": {
+        const text = typeof part.text === "string" ? part.text : "";
+        events.push({ kind: "reasoning", sessionId, messageId, text });
+        break;
+      }
+
       case "tool_use":
       case "tool_result": {
         events.push({ kind: "tool", sessionId, messageId, raw });

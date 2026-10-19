@@ -62,6 +62,7 @@ export type CliDiagnostic =
 export type CliBridgeEvent =
   | { kind: "start"; sessionId: string; messageId?: string }
   | { kind: "text"; sessionId: string; messageId?: string; text: string }
+  | { kind: "reasoning"; sessionId: string; messageId?: string; text: string }
   | { kind: "tool"; sessionId: string; messageId?: string; raw: unknown }
   | {
       kind: "finish";

@@ -200,3 +200,12 @@ test("sawAnyEvent 与 lastMessageId 可用", () => {
   assert.equal(m.sawAnyEvent, true);
   assert.equal(m.lastMessageId, "msg_9");
 });
+
+test("reasoning 事件 -> CliReasoningEvent（part.text 透传）", () => {
+  const m = new OpenCodeEventMapper();
+  const r = m.push({ type: "reasoning", sessionID: "ses_1", part: { type: "reasoning", text: "思考内容" } });
+  assert.equal(r.events.length, 1);
+  assert.equal(r.events[0].kind, "reasoning");
+  assert.equal(r.events[0].text, "思考内容");
+  assert.equal(r.diagnostics.length, 0, "reasoning 不得再落 unknown-event 诊断");
+});
