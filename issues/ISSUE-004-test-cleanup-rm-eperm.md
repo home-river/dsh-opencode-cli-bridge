@@ -6,10 +6,10 @@
 
 ## 现象
 
-- **环境**：Windows，本机（`C:\Users\gansh`）首跑 `OCBRIDGE_IT=1 npm run test:integration`；
+- **环境**：Windows，本机（`C:\Users\<user>`）首跑 `OCBRIDGE_IT=1 npm run test:integration`；
 - **表现**：R01/R02/R07/R08/R11 共 5 条用例标记失败，但失败点全部是 `finally` 清理里的
   `rmSync(dir, { recursive: true, force: true })` 抛
-  `Error: EPERM, Permission denied: \\?\C:\Users\gansh\AppData\Local\Temp\ocbridge-it-*`，
+  `Error: EPERM, Permission denied: \\?\C:\Users\<user>\AppData\Local\Temp\ocbridge-it-*`，
   **用例断言本身全部通过**（R03/R05/R06 不做工作区清理，3/3 通过）；
 - **复现**：本机 5/5 稳定复现（连续两轮跑同一套）；
 - **误导性**：汇总显示 `pass 3 / fail 5`，极易误判为真实 CLI 链路回归或上游模型故障。
@@ -27,7 +27,7 @@
 4. **事后验证**：测试结束后手动 `Remove-Item -Recurse -Force` 7 个残留目录**全部立即成功**，
    逐文件独占打开测试无锁定、`Get-Process` 无 `opencode*` 残留 → 既非文件锁也非持久 ACL。
 
-旧机器（86181）上该竞态恰好不常命中，故 2026-10-16 回归记录为 8/8 通过；本机稳定命中。
+旧机器（<user>）上该竞态恰好不常命中，故 2026-10-16 回归记录为 8/8 通过；本机稳定命中。
 
 ## 修复方案（修复后填写）
 

@@ -6,7 +6,7 @@
 
 ## 现象
 
-- **本机**（`C:\Users\gansh`，Windows 10）`OCBRIDGE_IT=1 npm run test:integration` 中所有需要真实推理的
+- **本机**（`C:\Users\<user>`，Windows 10）`OCBRIDGE_IT=1 npm run test:integration` 中所有需要真实推理的
   用例（R01/R02/R07/R08）拿回 **空正文**（`text length=0`），`finishReason=error`、
   `errorCode=PROTOCOL_ERROR`、`exitCode=3`；
 - stderr 诊断里出现 Bun 崩溃横幅：
@@ -49,5 +49,5 @@
   `Bun has crashed` 横幅，对应轮次的空气泡即由本 issue 解释（候选 A「模型空响应」之外的
   新候选，已在 ISSUE-001 原因节加注）；
 - **集成回归**：ISSUE-004 修复后 `R11` 及清理全部稳定；剩余 4 条推理用例待 CLI 稳定的环境
-  （旧机器 86181 上 2026-10-16 曾 8/8 通过）复跑验收；
+  （旧机器 <user> 上 2026-10-16 曾 8/8 通过）复跑验收；
 - **可试缓解**（未验证）：升级/降级 `opencode-ai` 版本、修复本机系统证书/凭据存储后复测。

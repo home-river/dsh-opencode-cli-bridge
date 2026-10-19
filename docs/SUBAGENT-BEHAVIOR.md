@@ -82,7 +82,7 @@ deepseek 与 mimo 在补交轮均自述"只有执行过 bash 的记录，没有�
 
 ```powershell
 # 派发方基准（注意：父沙箱内 node --test 会 EPERM，须进程内跑）
-cd F:\project\DSH\plugin-dev\dsh-opencode-bridge
+cd <ws>\dsh-opencode-bridge
 node test/simulation/subagent-sim.test.mjs
 # 子代理侧（bash 工具内）两种都可
 node --test test/simulation/subagent-sim.test.mjs

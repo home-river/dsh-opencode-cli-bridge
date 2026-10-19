@@ -11,7 +11,7 @@
 ```text
 Error: Unexpected error
 
-Unknown: FileSystem.open (C:\Users\86181\.local\share\opencode\log\opencode.log)
+Unknown: FileSystem.open (C:\Users\<user>\.local\share\opencode\log\opencode.log)
 ```
 
 复现步骤：
@@ -32,7 +32,7 @@ opencode CLI 启动的第一步就是以追加方式打开全局日志文件 `~/
 验证（同一沙箱内）：
 
 ```powershell
-Set-Content "C:\Users\86181\.local\share\opencode\log\sandbox-write-probe.tmp" "probe"
+Set-Content "C:\Users\<user>\.local\share\opencode\log\sandbox-write-probe.tmp" "probe"
 # UnauthorizedAccessException / Access to the path ... is denied.
 Set-Content "$env:TEMP\sandbox-write-probe.tmp" "probe"
 # 成功

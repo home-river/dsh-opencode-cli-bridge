@@ -79,13 +79,13 @@ message: OpenCode's free tier can only be used from within OpenCode...
 命令位置：
 
 ```text
-C:\Users\86181\AppData\Roaming\npm\opencode.cmd
+C:\Users\<user>\AppData\Roaming\npm\opencode.cmd
 ```
 
 底层可执行文件：
 
 ```text
-C:\Users\86181\AppData\Roaming\npm\node_modules\opencode-ai\bin\opencode.exe
+C:\Users\<user>\AppData\Roaming\npm\node_modules\opencode-ai\bin\opencode.exe
 ```
 
 ---
@@ -291,14 +291,14 @@ OpenCode CLI 进程
 使用 Windows npm wrapper：
 
 ```text
-C:\Users\86181\AppData\Roaming\npm\opencode.cmd
+C:\Users\<user>\AppData\Roaming\npm\opencode.cmd
 ```
 
 参数数组：
 
 ```text
 run
---dir F:\project\DSH\plugin-dev\fixtures\opencode-headless-spike
+--dir <ws>\dsh-opencode-bridge\fixtures\opencode-headless-spike
 --model opencode/mimo-v2.6-flash-free
 --format json
 <prompt>

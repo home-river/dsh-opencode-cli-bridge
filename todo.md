@@ -403,7 +403,7 @@ free 判断：只展示已验证免费模型
 **候选路径：**
 
 - [ ] PATH 中的 `opencode`；
-- [ ] `C:\Users\86181\AppData\Roaming\npm\opencode.cmd`；
+- [ ] `C:\Users\<user>\AppData\Roaming\npm\opencode.cmd`；
 - [ ] `opencode-ai` 包中的 `opencode.exe`；
 - [ ] 插件配置中的绝对路径。
 
@@ -1274,7 +1274,7 @@ opencode session delete <sessionID>
 - [ ] `runModelsCli` 的 spawn 未关 stdin（Ruling P19，一行 `stdio:["ignore","pipe","pipe"]` 顺手修）；
 - [x] ~~`cordis.patch.yml` 无 `config: {}` 的 insert 行能否被 loader 接受（TODO-27 顺带确认）~~ → **实机首测通过**：插件安装成功且可正常对话，loader 接受了无 `config: {}` 的 insert 行。
 
-**实机首测记录（2026-10-17）：** 安装至 `F:\project\DSH\plugin-dev\dsh-opencode-bridge`（main @ e0e6148）后，DSH 端可正常对话——provider 注册、结构化 adapter 通过宿主校验、prompt→`opencode run`→StreamChunk→渲染全链路打通。阶段 A–C 基本冒烟通过（模型可见、可出完整回答）。TODO-30 取消与错误路径未测，TODO-29 多 workspace 隔离未测。
+**实机首测记录（2026-10-17）：** 安装至 `<ws>\dsh-opencode-bridge`（main @ e0e6148）后，DSH 端可正常对话——provider 注册、结构化 adapter 通过宿主校验、prompt→`opencode run`→StreamChunk→渲染全链路打通。阶段 A–C 基本冒烟通过（模型可见、可出完整回答）。TODO-30 取消与错误路径未测，TODO-29 多 workspace 隔离未测。
 
 **实机排障记录（2026-10-17，"问工作区情况 → 空气泡"）：**
 - 症状：特定提问（"当前工作区的情况"）得空气泡（无正文、无报错字样）；其他内容正常；同会话与新会话均可复现；

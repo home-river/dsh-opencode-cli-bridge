@@ -24,13 +24,13 @@ CLI 自身单进程，但会派生 git 子进程，所以杀进程必须用 /T �
 | 操作系统 | Windows x64 |
 | Node.js | `v24.18.1` |
 | OpenCode CLI | `1.19.0`（npm 包 `opencode-ai`） |
-| npm shim（批处理） | `C:\Users\86181\AppData\Roaming\npm\opencode.cmd`（148 bytes） |
-| npm shim（sh） | `C:\Users\86181\AppData\Roaming\npm\opencode`（296 bytes） |
-| 真身可执行文件 | `C:\Users\86181\AppData\Roaming\npm\node_modules\opencode-ai\bin\opencode.exe` |
+| npm shim（批处理） | `C:\Users\<user>\AppData\Roaming\npm\opencode.cmd`（148 bytes） |
+| npm shim（sh） | `C:\Users\<user>\AppData\Roaming\npm\opencode`（296 bytes） |
+| 真身可执行文件 | `C:\Users\<user>\AppData\Roaming\npm\node_modules\opencode-ai\bin\opencode.exe` |
 | 真身文件属性 | 180,714,888 bytes，**HardLink**，Bun 编译的单文件二进制 |
-| PATH 命中的目录 | `C:\Users\86181\AppData\Roaming\npm`（**`bin\` 不在 PATH**） |
+| PATH 命中的目录 | `C:\Users\<user>\AppData\Roaming\npm`（**`bin\` 不在 PATH**） |
 | 测试用模型 | `opencode/mimo-v2.6-flash-free` |
-| 测试用工作区 | `F:\project\DSH\plugin-dev\tmp-probe-ws`（测后已删） |
+| 测试用工作区 | `<ws>\tmp-probe-ws`（测后已删） |
 
 `opencode-ai` 包的 `package.json` 关键字段：
 
@@ -137,14 +137,14 @@ node -e "console.log(JSON.stringify(process.argv.slice(1)))" %*
 | 路径 | 实际到达的 argv |
 |---|---|
 | **B1** 直接 spawn `node.exe`（`shell:false`，基准） | `["A%USERNAME%B","x^&y","C:\\dir\\","100%"]` |
-| **B2** 走 `.cmd` 批处理（`shell:true`） | `["A86181B","x"]` + 一条命令执行错误 |
+| **B2** 走 `.cmd` 批处理（`shell:true`） | `["A<user>B","x"]` + 一条命令执行错误 |
 | **B3** 走 `.cmd` 批处理（`shell:false`） | `SYNC THROW code=EINVAL` |
 
 ### 4.3 B2 原始输出
 
 ```text
 B2 走 .cmd 批处理（shell:true，npm shim 的真实路径）
-["A86181B","x"]
+["A<user>B","x"]
 'y' is not recognized as an internal or external command,
 operable program or batch file.
 ```
@@ -153,7 +153,7 @@ operable program or batch file.
 
 | 输入 | 到达 exe 的值 | 发生了什么 |
 |---|---|---|
-| `A%USERNAME%B` | `A86181B` | `%VAR%` 被 cmd.exe **展开**，用户原文被改写 |
+| `A%USERNAME%B` | `A<user>B` | `%VAR%` 被 cmd.exe **展开**，用户原文被改写 |
 | `x^&y` | 拆成参数 `x`，**并且执行了命令 `y`** | `&` 被当成**命令分隔符**；`y` 被 cmd 当作命令执行 |
 | `C:\dir\` | **消失** | 被 `&` 切断的后半段丢弃 |
 | `100%` | **消失** | 同上 |
@@ -307,7 +307,7 @@ EPERM: operation not permitted, uv_spawn 'git'
 ### 7.3 沙箱还会挡住 CLI 写自己的日志
 
 ```text
-Error: Unknown: FileSystem.open (C:\Users\86181\.local\share\opencode\log\opencode.log)
+Error: Unknown: FileSystem.open (C:\Users\<user>\.local\share\opencode\log\opencode.log)
 ```
 
 同样是 workspace-write 沙箱把 `~/.local/` 挡在外面所致，不是 CLI 缺陷。
@@ -389,8 +389,8 @@ Error: Unknown: FileSystem.open (C:\Users\86181\.local\share\opencode\log\openco
 ```js
 import { spawn } from "node:child_process";
 
-const SHIM = "C:\\Users\\86181\\AppData\\Roaming\\npm\\opencode.cmd";
-const EXE = "C:\\Users\\86181\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe";
+const SHIM = "C:\\Users\\<user>\\AppData\\Roaming\\npm\\opencode.cmd";
+const EXE = "C:\\Users\\<user>\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe";
 
 // §3：EINVAL 判定
 try { spawn(SHIM, ["--version"]); } catch (e) { console.log("shim no-shell:", e.code); }
