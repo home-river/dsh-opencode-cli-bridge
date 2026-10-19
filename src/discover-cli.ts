@@ -2,6 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { CliBridgeError } from "./errors.js";
+import { detectInstallAdvice, formatNotFoundMessage } from "./install-advice.js";
 
 export interface DiscoverOptions {
   command?: string;
@@ -113,6 +114,6 @@ export async function discoverOpencodeCli(opts: DiscoverOptions = {}): Promise<D
 
   throw new CliBridgeError(
     "CLI_NOT_FOUND",
-    "OpenCode CLI not found. Install it with: npm i -g opencode-ai",
+    formatNotFoundMessage(detectInstallAdvice(env)),
   );
 }

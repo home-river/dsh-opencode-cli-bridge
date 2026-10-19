@@ -17,6 +17,7 @@ window.__ModuleLoader__.load({
     const PANEL_ID = "opencode-bridge-models";
     const MODELS_URL = "/api/opencode-bridge.models";
     const FILTER_URL = "/api/opencode-bridge.filter";
+    const CLI_STATUS_URL = "/api/opencode-bridge.cli-status";
 
     // ---- 自持字典（zh 优先；en 兜底）----
     const DICT = {
@@ -44,6 +45,21 @@ window.__ModuleLoader__.load({
         collapse: "折叠",
         configError: "配置文件异常（已按默认过滤）：{msg}",
         serviceDown: "设置服务不可用：host 侧 connection 路由未注册",
+        cliTitle: "CLI 环境",
+        cliFound: "已安装",
+        cliMissing: "未检测到 OpenCode CLI",
+        cliChecking: "检测中…",
+        cliCheck: "重新检测",
+        cliVersion: "版本 {v}",
+        cliVersionUnknown: "版本未知",
+        cliVersionError: "版本探测失败：{msg}",
+        cliSource: "来源：{src}",
+        cliHint: "运行下面的命令安装（已按当前环境推荐）：",
+        cliCopy: "复制",
+        cliCopied: "已复制",
+        cliDownload: "手动下载（GitHub Releases）",
+        cliNoManager: "未检测到包管理器（npm / scoop / choco）；可先安装 Node.js 再用上面命令，或直接下载二进制。",
+        cliLoadFailed: "CLI 状态获取失败",
       },
       en: {
         panel: "OC-bridge",
@@ -69,6 +85,21 @@ window.__ModuleLoader__.load({
         collapse: "Collapse",
         configError: "Config file unhealthy (defaults applied): {msg}",
         serviceDown: "Settings service unavailable: host connection routes not registered",
+        cliTitle: "CLI Environment",
+        cliFound: "Installed",
+        cliMissing: "OpenCode CLI not found",
+        cliChecking: "Checking…",
+        cliCheck: "Re-check",
+        cliVersion: "version {v}",
+        cliVersionUnknown: "version unknown",
+        cliVersionError: "Version probe failed: {msg}",
+        cliSource: "source: {src}",
+        cliHint: "Run this command to install (picked for your environment):",
+        cliCopy: "Copy",
+        cliCopied: "Copied",
+        cliDownload: "Manual download (GitHub Releases)",
+        cliNoManager: "No package manager (npm / scoop / choco) detected; install Node.js first and use the command above, or download the binary directly.",
+        cliLoadFailed: "Failed to fetch CLI status",
       },
     };
     const lang = typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "zh" : "en";
@@ -126,6 +157,21 @@ window.__ModuleLoader__.load({
 .obm-warn { font-size:12px; padding:9px 12px; border-radius:10px; border:1px solid rgba(250,204,21,.35); background:rgba(250,204,21,.08); color:rgba(255,255,255,.85); line-height:1.5; }
 .obm-empty { padding:30px 16px; text-align:center; color:rgba(255,255,255,.42); font-size:12px; border-bottom:none; cursor:default; }
 .obm-empty:hover { background:none; }
+/* ---- CLI 状态区块 ---- */
+.obm-cli { display:flex; flex-direction:column; gap:8px; padding:11px 14px; border:1px solid rgba(255,255,255,.08); border-radius:12px; background:rgba(255,255,255,.028); }
+.obm-cli-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.obm-cli-badge { font-size:11px; font-weight:650; padding:3px 10px; border-radius:999px; white-space:nowrap; }
+.obm-cli-badge.ok { color:#7ee2a8; background:rgba(52,199,123,.12); border:1px solid rgba(52,199,123,.3); }
+.obm-cli-badge.err { color:#ff9d9d; background:rgba(255,90,90,.1); border:1px solid rgba(255,90,90,.32); }
+.obm-cli-ver { font-family:var(--dsw-font-mono,ui-monospace,monospace); font-size:11px; color:rgba(255,255,255,.78); }
+.obm-cli-src { font-family:var(--dsw-font-mono,ui-monospace,monospace); font-size:10px; color:rgba(255,255,255,.4); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.obm-cli-path { font-family:var(--dsw-font-mono,ui-monospace,monospace); font-size:10px; color:rgba(255,255,255,.45); overflow-wrap:anywhere; }
+.obm-cli-hint { font-size:12px; color:rgba(255,255,255,.62); line-height:1.6; }
+.obm-cli-cmdrow { display:flex; gap:8px; align-items:stretch; }
+.obm-cli-cmd { flex:1; min-width:0; font-family:var(--dsw-font-mono,ui-monospace,monospace); font-size:11px; color:rgba(255,255,255,.88); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:7px 10px; overflow-wrap:anywhere; }
+.obm-cli-link { font-size:11px; color:#8ab4ff; text-decoration:none; }
+.obm-cli-link:hover { text-decoration:underline; }
+.obm-cli-note { font-size:11px; color:rgba(255,255,255,.5); line-height:1.6; }
 /* ---- 宿主 UI 修补：/model、/permission 的 popupSelect 弹窗卡 ----
    宿主把它拉满 composer 浮层宽度（.EhuiKa_card { max-width:100%; left:0; right:0 }），
    大屏下横贯整页；这里限宽并居中。高度宿主已有 320px 锚定上限 + 内部滚动，刻意不去覆盖
@@ -194,6 +240,82 @@ window.__ModuleLoader__.load({
       const slash = m.id.indexOf("/");
       if (m.name && m.name !== m.id) return { primary: m.name, secondary: m.id };
       return { primary: slash > 0 ? m.id.slice(slash + 1) : m.id, secondary: m.id };
+    }
+
+    // ---- CLI 状态（只读探测：路径/来源/版本 + 未安装时的安装建议）----
+    async function fetchCliStatus() {
+      let res;
+      try {
+        res = await fetch(CLI_STATUS_URL, { method: "GET" });
+      } catch (e) {
+        throw new Error(t("serviceDown"));
+      }
+      if (res.status === 404) throw new Error(t("serviceDown"));
+      let payload;
+      try {
+        payload = await res.json();
+      } catch (e) {
+        throw new Error(`${t("cliLoadFailed")} (HTTP ${res.status})`);
+      }
+      if (!payload.ok) throw new Error(payload.error || t("cliLoadFailed"));
+      return payload.value;
+    }
+
+    function CliStatusBlock() {
+      const [report, setReport] = React.useState(null);
+      const [error, setError] = React.useState(null);
+      const [busy, setBusy] = React.useState(true);
+      const [copied, setCopied] = React.useState(false);
+      const copyTimer = React.useRef(null);
+      React.useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+      const load = React.useCallback(async () => {
+        setBusy(true);
+        setError(null);
+        try {
+          setReport(await fetchCliStatus());
+        } catch (e) {
+          setError(e && e.message ? e.message : String(e));
+        } finally {
+          setBusy(false);
+        }
+      }, []);
+      React.useEffect(() => { void load(); }, [load]);
+      const copy = async (text) => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          if (copyTimer.current) clearTimeout(copyTimer.current);
+          copyTimer.current = setTimeout(() => setCopied(false), 1800);
+        } catch { /* 剪贴板不可用时静默：命令可见可手选 */ }
+      };
+
+      return h("div", { className: "obm-cli" },
+        h("div", { className: "obm-cli-row" },
+          h("span", { className: "obm-cli-badge " + (report && report.found ? "ok" : "err") },
+            report ? (report.found ? t("cliFound") : t("cliMissing")) : t("cliChecking")),
+          report && report.found
+            ? h("span", { className: "obm-cli-ver" }, report.version ? t("cliVersion", { v: report.version }) : t("cliVersionUnknown"))
+            : null,
+          report && report.found && report.source
+            ? h("span", { className: "obm-cli-src" }, t("cliSource", { src: report.source }))
+            : null,
+          h("button", { className: "obm-btn", onClick: () => void load(), disabled: busy }, t("cliCheck")),
+        ),
+        report && report.found && report.command ? h("div", { className: "obm-cli-path" }, report.command) : null,
+        report && report.found && report.versionError
+          ? h("div", { className: "obm-cli-note" }, t("cliVersionError", { msg: report.versionError }))
+          : null,
+        error ? h("div", { className: "obm-cli-note" }, error) : null,
+        report && !report.found ? [
+          h("div", { key: "hint", className: "obm-cli-hint" }, t("cliHint")),
+          h("div", { key: "cmd", className: "obm-cli-cmdrow" },
+            h("code", { className: "obm-cli-cmd" }, report.install.command),
+            h("button", { className: "obm-btn", onClick: () => void copy(report.install.command) }, copied ? t("cliCopied") : t("cliCopy")),
+          ),
+          h("a", { key: "dl", className: "obm-cli-link", href: report.install.downloadUrl, target: "_blank", rel: "noreferrer" }, t("cliDownload")),
+          report.install.manager === "none" ? h("div", { key: "note", className: "obm-cli-note" }, t("cliNoManager")) : null,
+        ] : null,
+      );
     }
 
     // ---- 面板组件 ----
@@ -286,6 +408,7 @@ window.__ModuleLoader__.load({
           h("div", { className: "obm-title" }, t("title")),
           h("div", { className: "obm-sub" }, t("subtitle")),
         ),
+        h(CliStatusBlock),
         state && state.configError
           ? h("div", { className: "obm-warn" }, t("configError", { msg: state.configError }))
           : null,

@@ -202,6 +202,16 @@ test("error 事件 -> end() 时 usage 全零 + error(<event.code>)", () => {
   ]);
 });
 
+test("CLI_NOT_FOUND 的 failure 消息附安装命令与下载链接（与设置面板同一口径）", () => {
+  const c = new DshChunkConverter();
+  c.push({ kind: "error", code: "CLI_NOT_FOUND", message: "whatever" });
+  const chunks = c.end();
+  const failure = chunks[1].reason.failure;
+  assert.equal(failure.code, "CLI_NOT_FOUND");
+  assert.match(failure.message, /opencode-ai/);
+  assert.match(failure.message, /https:\/\//);
+});
+
 test("无任何终止事件 -> end() 兜底 error(PROTOCOL_ERROR)", () => {
   const c = new DshChunkConverter();
   assert.deepEqual(c.end(), [

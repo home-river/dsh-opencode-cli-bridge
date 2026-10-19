@@ -81,6 +81,15 @@ MVP 目标是：
 - host 侧 `connection` 服务缺失时只记诊断、入口数据加载失败但**不影响模型桥主功能**；
 - 面板为 vanilla JS + React.createElement 手写模块（`src/client.js` → `lib/client.js`，`scripts/build-client.mjs` 拷贝产出），未引入打包链。
 
+### CLI 环境检测（面板顶部「CLI 环境」区块）
+
+面板顶部常驻 CLI 状态卡，把「聊天失败才知道没装 CLI」前移为一目了然的环境自检：
+
+- **已安装**：显示版本（`<exe> --version`，5s 超时失败降级为「版本未知/探测失败」）、绝对路径、发现来源（explicit / path / npm-global / shim-resolved）与「重新检测」按钮；
+- **未安装**：给出**按当前环境推荐的安装命令**（PATH 上探测 npm > scoop > choco，都没有则 npm 兜底 + 提示），带一键复制按钮与 GitHub Releases 手动下载链接；
+- 检测逻辑复用 `discover-cli` 四级发现 + `src/install-advice.ts` 的包管理器探测，`CLI_NOT_FOUND` 报错（`discover-cli` 抛出与 DSH failure 消息）共用同一文案函数 `formatNotFoundMessage`，三处口径永远一致；
+- 只读探测，不执行任何安装/卸载；通信走 `/api/opencode-bridge.cli-status`（GET），信封与上两条路由一致。
+
 ## 开发状态
 
 ```text
@@ -95,5 +104,6 @@ MVP 目标是：
 [x] DSH StreamChunk 转换（切块模拟流式，多 finish 折叠）
 [x] 模型目录与缓存
 [x] 模型暴露设置 UI（侧边栏入口 + 勾选面板，写回 config.json）
+[x] CLI 环境检测（面板状态卡：路径/来源/版本 + 安装建议与复制按钮）
 [ ] DSH 实机联调
 ```

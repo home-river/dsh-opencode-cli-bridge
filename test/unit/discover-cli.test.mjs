@@ -68,6 +68,27 @@ test("全部失败 -> CLI_NOT_FOUND，消息含安装提示", async () => {
       (e) => {
         assert.equal(e.code, "CLI_NOT_FOUND");
         assert.match(e.message, /opencode-ai/);
+        assert.match(e.message, /npm i -g opencode-ai/, "无包管理器时给 npm 兜底命令");
+        assert.match(e.message, /https:\/\//, "消息附手动下载链接");
+        return true;
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI_NOT_FOUND 文案随宿主包管理器推荐命令（与设置面板同一口径）", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ocbridge-"));
+  try {
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "scoop.cmd"), "@ECHO off\r\nfake scoop\r\n");
+    await assert.rejects(
+      () => discoverOpencodeCli({ env: { PATH: bin, APPDATA: join(root, "none") } }),
+      (e) => {
+        assert.equal(e.code, "CLI_NOT_FOUND");
+        assert.match(e.message, /scoop install opencode/);
         return true;
       },
     );

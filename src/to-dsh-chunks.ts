@@ -1,6 +1,7 @@
 import type { CliBridgeEvent, CliUsage, ErrorCode, FinishReason } from "./types.js";
 import { ZERO_USAGE } from "./types.js";
 import { CliBridgeAbortError, CliBridgeError } from "./errors.js";
+import { formatNotFoundMessage } from "./install-advice.js";
 import { chunkText, DEFAULT_CHUNK_SIZE } from "./chunk-text.js";
 import type {
   DshFinishReason,
@@ -40,7 +41,8 @@ function formatInputSummary(input: unknown): string {
 }
 
 const FAILURE_MESSAGES: Record<ErrorCode, string> = {
-  CLI_NOT_FOUND: "OpenCode CLI not found",
+  // 与 CLI 状态面板 / discover-cli 报错同一口径（formatNotFoundMessage 共享文案）
+  CLI_NOT_FOUND: formatNotFoundMessage(),
   CLI_START_FAILED: "OpenCode CLI failed to start",
   WORKSPACE_INVALID: "Invalid workspace directory",
   SESSION_INVALID: "OpenCode session is invalid",

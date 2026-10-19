@@ -49,14 +49,14 @@ test("apply 经 connection.fetch 注册模型设置路由（inject 等待式）�
   };
   const returned = apply(ctx);
   assert.deepEqual(injectedKeys, ["connection"]);
-  assert.deepEqual(routes.map((r) => r.path).sort(), ["/api/opencode-bridge.filter", "/api/opencode-bridge.models"]);
+  assert.deepEqual(routes.map((r) => r.path).sort(), ["/api/opencode-bridge.cli-status", "/api/opencode-bridge.filter", "/api/opencode-bridge.models"]);
   for (const r of routes) {
     assert.ok(r.methods.length > 0);
     assert.equal(r.requestBody, "buffered");
     assert.equal(typeof r.fetch, "function");
   }
   returned();
-  assert.equal(unregistered.length, 2, "两条路由都应被注销");
+  assert.equal(unregistered.length, 3, "三条路由都应被注销");
 
   // 无 inject 且无 connection（如纯 host 组合）：不抛异常、apply 正常返回
   const bare = apply({ llm: { registerAdapter: () => () => {} }, get: () => undefined });

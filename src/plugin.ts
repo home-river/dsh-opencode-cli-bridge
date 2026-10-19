@@ -6,6 +6,7 @@ import { SessionStore } from "./session-store.js";
 import { loadCatalog as loadModelCatalog } from "./catalog-store.js";
 import { DEFAULT_CONFIG_PATH, loadModelFilterConfig, selectVisibleModels } from "./model-filter.js";
 import { buildModelSettingsRoutes } from "./model-settings.js";
+import { buildCliStatusRoute } from "./cli-status.js";
 import type { HostFetchRoute } from "./model-settings.js";
 import type { CatalogModel } from "./catalog.js";
 
@@ -17,7 +18,7 @@ export const inject = ["llm"];
  * 实机排查「修复没生效」时用它确认加载的是哪版模块（HMR live 重载可能只换
  * fiber 不换 ESM 模块实例，见 ISSUE-001 复验记录）。
  */
-export const BRIDGE_BUILD = "0.1.0-2026-10-18.2";
+export const BRIDGE_BUILD = "0.1.0-2026-10-19.1";
 
 const LOG_DIR = join(homedir(), ".dsh-opencode-bridge");
 
@@ -141,8 +142,13 @@ interface ConnectionLike {
   fetch?: { register?: (route: HostFetchRoute) => unknown };
 }
 
+/** 全部设置面路由：模型暴露设置两条 + CLI 状态检测一条。 */
+function buildSettingsRoutes(): HostFetchRoute[] {
+  return [...buildModelSettingsRoutes(), buildCliStatusRoute()];
+}
+
 /**
- * 注册「模型暴露设置」的两条 host 路由（读状态 / 写过滤）到 `ctx.connection.fetch`：
+ * 注册「模型暴露设置」的 host 路由（读状态 / 写过滤 / CLI 检测）到 `ctx.connection.fetch`：
  * 该注册面位于浏览器会话 cookie 鉴权栅栏内（缺 cookie 的请求 401），无需自建围栏。
  * connection 服务可能晚于本插件 apply 就绪 —— 经 `ctx.inject` 等待式注入；
  * 服务缺失或注册失败只记诊断并跳过，设置 UI 不可用不影响模型桥主功能。
@@ -157,7 +163,7 @@ export function registerModelSettingsRoutes(ctx: PluginContext): Array<() => voi
       safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: "connection service unavailable; settings routes disabled" })}\n`);
       return;
     }
-    for (const route of buildModelSettingsRoutes()) {
+    for (const route of buildSettingsRoutes()) {
       try {
         const d = register.call(fetchApi, route);
         disposers.push(typeof d === "function" ? (d as () => void) : () => {});
@@ -165,7 +171,7 @@ export function registerModelSettingsRoutes(ctx: PluginContext): Array<() => voi
         safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `register failed ${route.path}: ${String(e)}` }).slice(0, 2000)}\n`);
       }
     }
-    safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `routes registered: ${buildModelSettingsRoutes().map((r) => r.path).join(", ")}` })}\n`);
+    safeAppend("diagnostics.log", `${ts} ${JSON.stringify({ code: "MODEL_SETTINGS_ROUTES", message: `routes registered: ${buildSettingsRoutes().map((r) => r.path).join(", ")}` })}\n`);
   };
   try {
     if (typeof ctx.inject === "function") {
