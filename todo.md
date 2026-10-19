@@ -1184,7 +1184,7 @@ opencode session delete <sessionID>
 
 **需要确认：**
 
-- [ ] `dsh plugin add` 的真实命令；
+- [x] `dsh plugin add` 的真实命令；
 - [ ] 是否可以 `plugin_manager install_bundle`；
 - [ ] 是否需要重启 DSH；
 - [ ] host 插件日志在哪里；
@@ -1195,9 +1195,20 @@ opencode session delete <sessionID>
 
 **完成标准：**
 
-- [ ] 有一份从构建到安装的最短命令；
-- [ ] 有日志查看方式；
-- [ ] 有卸载和恢复方式。
+- [x] 有一份从构建到安装的最短命令；
+- [x] 有日志查看方式；
+- [x] 有卸载和恢复方式。
+
+**结论（2026-10-19，npm 发布冒烟实证）：**
+
+1. **安装最短命令**：`dsh plugin --profile <p> add dsh-opencode-cli-bridge`（无需全局装 dsh——
+   `npx -y --package @deepseek-ai/dsh dsh plugin ...` 同效，实测 DSH CLI 0.2.1-rc.2）；
+2. **profile 自动初始化**：`--profile <不存在的名字> add` 会先创建 profile 再装（scratch 冒烟零成本）；
+3. **pnpm 必须在 PATH**：插件管理器外调 pnpm 装依赖，缺失时报 `'pnpm' is not recognized`；
+   无全局 pnpm 时可用 DSH 自带 `dsh-runtimes\...\dependencies\pnpm\bin\pnpm.mjs` 垫 cmd shim；
+4. **安装日志**：`<profile>\.plugin-manager\logs\operation-*\`；profile 布局 = `<profile>\package.json` + pnpm 装的 `node_modules`；
+5. **冒烟记录**：scratch profile `smoke-ocb` 从 npm 装 `dsh-opencode-cli-bridge@0.1.0` 成功（2.7s），
+   registry → pnpm → profile 全链路通；npm 包内容自检 69 文件（lib + README/CHANGELOG/LICENSE + cordis.patch.yml）。
 
 ---
 

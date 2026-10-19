@@ -21,6 +21,7 @@
 |---|---|
 | DeepSeek Harness | 0.2.x（实测线 0.2.1） |
 | Node.js | ≥ 20（DSH 能跑就满足） |
+| pnpm | ≥ 10（`dsh plugin add` 用它装依赖，需在 PATH；`npm i -g pnpm`） |
 | **OpenCode CLI** | **必须**：本插件通过本机 `opencode` CLI 出模型流量 |
 
 OpenCode CLI 未装也没关系——打开 OC-bridge 面板，顶部「CLI 环境」区块会告诉你状态并给出**按你的环境推荐的安装命令**（自动探测 npm / scoop / choco），一键复制即可。
