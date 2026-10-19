@@ -77,6 +77,15 @@ switch (MODE) {
     line(finish("msg_1", "tool-calls", T1));
     break;
 
+  case "tool-only-hang":
+    // ISSUE-009 现场：工具步收尾（step_finish tool-calls）后进程僵住不退出，
+    // 等待超时层击杀 —— 复现「超时死亡被零文本保险伪装成正常收尾」的现场。
+    line(stepStart("msg_1"));
+    line(tool("msg_1"));
+    line(finish("msg_1", "tool-calls", T1));
+    await sleep(600_000);
+    break;
+
   case "empty":
     line(stepStart("msg_1"));
     line(finish("msg_1", "stop", T1));

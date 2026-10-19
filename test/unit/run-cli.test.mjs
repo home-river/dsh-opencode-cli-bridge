@@ -215,12 +215,29 @@ test("firstEvent 不误杀：总时长超过 firstEventMs 但首事件已到达 
 });
 
 test("startup 超时：spawn 成功但无任何事件时触发 timedOutLayer=startup", async () => {
-  const { opts } = makeOpts("hang", {
+  // 用不写任何 stdio 的子进程（与下方 firstEvent 用例同法）：startup 的语义是
+  // 「spawn 成功但无任何事件」的看门狗，首个事件到达即应解除（ISSUE-009）。
+  const { opts } = makeOpts("normal", {
+    args: ["-e", "setTimeout(() => {}, 600000)"],
     timeouts: { startupMs: 50, firstEventMs: 1000, idleMs: 30000, totalMs: 30000, shutdownMs: 1000 },
   });
   const out = await runCliProcess(opts);
   assert.equal(out.timedOut, true);
   assert.equal(out.timedOutLayer, "startup");
+});
+
+test("startup 不误杀（ISSUE-009）：首事件已到达的长回合（>startupMs）正常完成", async () => {
+  // fake "slow" 立刻写 step_start（首事件 <100ms），随后 800ms 才写正文。
+  // startupMs=150 远小于总时长：startup 层必须在首事件到达时解除，
+  // 不得在回合进行中把进程杀掉（修复前 timedOut=true / layer=startup）。
+  const { opts, stdoutLines } = makeOpts("slow", {
+    timeouts: { startupMs: 150, firstEventMs: 5000, idleMs: 5000, totalMs: 5000, shutdownMs: 500 },
+    env: { ...process.env, FAKE_MODE: "slow", FAKE_SLOW_MS: "800" },
+  });
+  const out = await runCliProcess(opts);
+  assert.equal(out.timedOut, false);
+  assert.equal(out.exitCode, 0);
+  assert.ok(stdoutLines.some((l) => l.includes("SLOW_TEXT")));
 });
 
 test("firstEvent 超时：spawn 成功但首事件迟迟不到 → timedOutLayer=firstEvent", async () => {

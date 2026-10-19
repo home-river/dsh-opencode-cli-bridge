@@ -155,6 +155,25 @@ async function executeCall(opts: CliBridgeOptions): Promise<ExecuteResult> {
     }
   }
 
+  // ISSUE-009：进程被超时层击杀时，若回合并未自然收尾（末步停在 tool-calls、
+  // 或根本没有任何 finish），必须如实上报 TIMEOUT —— 否则陈旧的 step_finish(tool-calls)
+  // 会冒充正常收尾，被 to-dsh-chunks 的零文本保险改写成 stop + 提示语，
+  // 把超时死亡伪装成「本轮模型执行了工具…但没有产生文本输出」的正常输出。
+  // 回合已自然收尾（stop/max-tokens，如正文已完整、进程只是退得慢）时不误报。
+  if (outcome.timedOut) {
+    const lastFinish = [...events].reverse().find((e) => e.kind === "finish");
+    const turnCompleted =
+      lastFinish !== undefined && (lastFinish.reason === "stop" || lastFinish.reason === "max-tokens");
+    const hasError = events.some((e) => e.kind === "error");
+    if (!turnCompleted && !hasError) {
+      events.push({
+        kind: "error",
+        code: "TIMEOUT",
+        message: `CLI call failed: TIMEOUT (${outcome.timedOutLayer ?? "unknown"})`,
+      });
+    }
+  }
+
   return { events, diagnostics, outcome };
 }
 

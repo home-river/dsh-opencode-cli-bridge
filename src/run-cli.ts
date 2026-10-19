@@ -99,6 +99,7 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
   const timers = new Set<NodeJS.Timeout>();
   let idleTimer: NodeJS.Timeout | null = null;
   let firstEventTimer: NodeJS.Timeout | null = null;
+  let startupTimer: NodeJS.Timeout | null = null;
   let exitFlushTimer: NodeJS.Timeout | null = null;
   let aborted = false;
   let timedOut = false;
@@ -129,6 +130,10 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
       clearTimeout(firstEventTimer);
       firstEventTimer = null;
     }
+    if (startupTimer) {
+      clearTimeout(startupTimer);
+      startupTimer = null;
+    }
     // C1：20ms 尾部收尾 timer 必须被跟踪并清除，不得悬挂
     if (exitFlushTimer) {
       clearTimeout(exitFlushTimer);
@@ -146,10 +151,17 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
   };
 
   // I2：首个事件到达时清除 firstEvent 定时器（spec §8.1：spawn 成功 → 首个事件）
+  // ISSUE-009：startup 同语义 —— 它是「spawn 成功但无任何事件」的看门狗，
+  // 首个事件到达即解除。此前它无人清除、全程计时，把所有超过 startupMs 的
+  // 进行中回合全部误杀（30s + shutdownMs 3s ≈ 33s 墙）。
   const markFirstEvent = (): void => {
     if (firstEventTimer) {
       clearTimeout(firstEventTimer);
       firstEventTimer = null;
+    }
+    if (startupTimer) {
+      clearTimeout(startupTimer);
+      startupTimer = null;
     }
   };
 
@@ -161,6 +173,7 @@ export async function runCliProcess(opts: RunCliOptions): Promise<RunCliOutcome>
     }, ms);
     timers.add(h);
     if (layer === "firstEvent") firstEventTimer = h;
+    if (layer === "startup") startupTimer = h;
   };
 
   function onAbort(): void {

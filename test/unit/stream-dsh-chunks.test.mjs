@@ -83,6 +83,25 @@ test("fake tool-only -> 工具进度可见 + 零文本保险 + finish(stop)（�
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("超时击杀不得被零文本保险吞掉（ISSUE-009）：tool-only-hang + idle 击杀 -> finish(error, TIMEOUT)", async () => {
+  // 现场复现：工具步收尾（step_finish tool-calls）后进程僵住，被 idle 层击杀。
+  // 修复前：陈旧的 tool-calls 收尾冒充正常结束，被零文本保险改写成 stop + 提示语
+  //（"本轮模型执行了工具…但没有产生文本输出"）——超时被伪装成正常输出。
+  const { dir, opts } = baseOpts("tool-only-hang", {
+    timeouts: { startupMs: 5000, firstEventMs: 5000, idleMs: 300, totalMs: 5000, shutdownMs: 500 },
+  });
+  try {
+    const chunks = await collect(opts);
+    const body = chunks.filter((c) => c.type === "text-delta").map((c) => c.text).join("");
+    assert.ok(body.includes("🔧 bash"), body);
+    assert.ok(!body.includes("没有产生文本输出"), `超时不得伪装成零文本提示：${body}`);
+    const finish = chunks.at(-1);
+    assert.equal(finish.type, "finish");
+    assert.equal(finish.reason.kind, "error", "被击杀的未完成回合必须如实收尾为 error");
+    assert.equal(finish.reason.failure.code, "TIMEOUT");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("fake empty -> finish(error, EMPTY_RESPONSE)", async () => {
   const { dir, opts } = baseOpts("empty");
   try {
